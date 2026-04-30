@@ -11,29 +11,76 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
 :root {
-  --bg:#061828; --bg2:#0d2540; --bg3:#163555;
-  --acc:#C8A84B; --acc2:#E2C46A; --acc3:#8C7030;
-  --teal:#1AABA0; --green:#1A8A50; --red:#C0392B; --orange:#e67e22;
-  --wh:#F5F0E8; --off:#C8BFA8; --mut:#5A7899;
-  --bdr:rgba(200,168,75,.22); --bdr2:rgba(200,168,75,.10);
-  --fd:'Barlow Condensed',sans-serif; --fs:'Libre Baskerville',serif; --fb:'Barlow',sans-serif;
-  --r:8px; --r2:14px;
+  /* ═══ 3 VEREINSFARBEN - Admin-konfigurierbar ═══ */
+  --club-accent: #C8102E;
+  --club-header: #1a1a1a;
+  --club-second: #8B0B1F;
+
+  /* Funktionsfarben */
+  --green:  #1A8A50;
+  --red:    #C0392B;
+  --orange: #e67e22;
+
+  /* Typografie + Radien */
+  --fd: 'Barlow Condensed',sans-serif;
+  --fs: 'Libre Baskerville',serif;
+  --fb: 'Barlow',sans-serif;
+  --r:  6px;
+  --r2: 12px;
+}
+
+/* ══ HELL-MODUS ══ */
+[data-theme="light"] {
+  --bg:      #F6F6F6;
+  --bg2:     #FFFFFF;
+  --bg3:     #EFEFEF;
+  --surface: #FFFFFF;
+  --acc:     var(--club-accent);
+  --acc2:    var(--club-second);
+  --acc3:    var(--club-second);
+  --teal:    #1E6FBF;
+  --nav:     var(--club-header);
+  --wh:      #1a1a1a;
+  --off:     #444444;
+  --mut:     #999999;
+  --bdr:     #E5E5E5;
+  --bdr2:    rgba(200,16,46,.1);
+  --shadow:  0 1px 8px rgba(0,0,0,.07);
+}
+
+/* ══ DUNKEL-MODUS (Standard fuer Regatta - auf dem Wasser) ══ */
+[data-theme="dark"] {
+  --bg:      #141414;
+  --bg2:     #1e1e1e;
+  --bg3:     #272727;
+  --surface: #1e1e1e;
+  --acc:     var(--club-accent);
+  --acc2:    var(--club-second);
+  --acc3:    var(--club-second);
+  --teal:    #2d7fd4;
+  --nav:     var(--club-header);
+  --wh:      #F0F0F0;
+  --off:     #AAAAAA;
+  --mut:     #666666;
+  --bdr:     rgba(255,255,255,.09);
+  --bdr2:    rgba(200,16,46,.15);
+  --shadow:  0 2px 12px rgba(0,0,0,.5);
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{background:var(--bg)}
 body{font-family:var(--fb);background:var(--bg);color:var(--wh);max-width:520px;margin:0 auto;min-height:100dvh;-webkit-font-smoothing:antialiased;
   background-image:radial-gradient(ellipse 100% 60% at 50% 0%,rgba(22,53,85,.9),transparent 65%),repeating-linear-gradient(0deg,transparent,transparent 39px,rgba(200,168,75,.04) 40px),repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(200,168,75,.04) 40px);}
 button,input,select,textarea{font-family:var(--fb);color:inherit;-webkit-appearance:none}
-.leaflet-container{background:#0a1e38!important}
+.leaflet-container{background:var(--bg2)!important}
 
 /* HEADER */
-.hdr{position:sticky;top:0;z-index:50;background:linear-gradient(180deg,#03101e,#061828);border-bottom:1px solid var(--acc3);padding-top:env(safe-area-inset-top)}
+.hdr{position:sticky;top:0;z-index:50;background:var(--nav);border-bottom:3px solid var(--acc);padding-top:env(safe-area-inset-top)}
 .hdr-top{display:flex;align-items:center;gap:12px;padding:11px 16px}
 .hdr-logo{width:40px;height:40px;flex-shrink:0;border-radius:50%;border:1.5px solid var(--acc3);display:flex;align-items:center;justify-content:center;background:var(--bg2)}
 .hdr-text{flex:1;min-width:0}
 .hdr-text .club{font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--acc3);line-height:1}
 .hdr-text .title{font-family:var(--fs);font-size:15px;font-weight:700;color:var(--wh);line-height:1.25}
-.hdr-link{font-family:var(--fd);font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--acc);background:rgba(200,168,75,.12);border:1px solid var(--bdr);border-radius:4px;padding:5px 9px;cursor:pointer;text-decoration:none}
+.hdr-link{font-family:var(--fd);font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--acc);background:var(--bg3);border:1px solid var(--bdr);border-radius:4px;padding:5px 9px;cursor:pointer;text-decoration:none}
 
 /* TABS */
 .tabs{display:grid;grid-template-columns:repeat(6,1fr)}
@@ -41,7 +88,7 @@ button,input,select,textarea{font-family:var(--fb);color:inherit;-webkit-appeara
 .tab svg{width:16px;height:16px;fill:currentColor}
 .tab.active{color:var(--acc);border-top-color:var(--acc)}
 
-.tabbar-fixed{position:fixed;bottom:0;left:0;right:0;max-width:520px;margin:0 auto;background:rgba(3,16,30,.95);backdrop-filter:blur(20px);border-top:1px solid var(--acc3);z-index:50;padding-bottom:env(safe-area-inset-bottom)}
+.tabbar-fixed{position:fixed;bottom:0;left:0;right:0;max-width:520px;margin:0 auto;background:var(--nav);;border-top:3px solid var(--acc);z-index:50;padding-bottom:env(safe-area-inset-bottom)}
 
 /* SCREENS */
 .screen{padding:16px 14px calc(100px + env(safe-area-inset-bottom));display:none}
@@ -51,8 +98,8 @@ button,input,select,textarea{font-family:var(--fb);color:inherit;-webkit-appeara
 .lxs{font-family:var(--fd);font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--acc3)}
 
 /* PANEL */
-.pnl{background:rgba(13,37,64,.75);border:1px solid var(--bdr);border-radius:var(--r2);overflow:hidden;margin-bottom:12px;backdrop-filter:blur(8px)}
-.phd{padding:9px 16px;background:rgba(200,168,75,.07);border-bottom:1px solid var(--bdr);display:flex;align-items:center;gap:8px}
+.pnl{background:var(--surface);border:1px solid var(--bdr);border-radius:var(--r2);overflow:hidden;margin-bottom:12px;}
+.phd{padding:9px 16px;background:var(--bg3);border-bottom:1px solid var(--bdr);display:flex;align-items:center;gap:8px}
 .phd::before{content:'';width:2px;height:12px;background:var(--acc);border-radius:2px}
 .phd-t{font-family:var(--fd);font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--acc)}
 
@@ -66,9 +113,9 @@ button,input,select,textarea{font-family:var(--fb);color:inherit;-webkit-appeara
 .btn-ghost{background:transparent;color:var(--acc);border:1px solid var(--bdr);font-size:14px}
 
 /* TIMER DISPLAY */
-.timer-hero{background:linear-gradient(180deg,#03101e,#0d2340);border:1px solid var(--bdr);border-radius:var(--r2);padding:32px 20px 24px;text-align:center;margin-bottom:14px;position:relative;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.5)}
+.timer-hero{background:var(--surface);border:1px solid var(--bdr);border-radius:var(--r2);padding:32px 20px 24px;text-align:center;margin-bottom:14px;position:relative;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.5)}
 .timer-status{font-family:var(--fd);font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--acc3);margin-bottom:8px}
-.timer-mmss{font-family:var(--fd);font-size:96px;font-weight:900;line-height:1;color:var(--acc2);font-variant-numeric:tabular-nums;letter-spacing:-.04em;text-shadow:0 0 40px rgba(200,168,75,.5);margin-bottom:8px}
+.timer-mmss{font-family:var(--fd);font-size:96px;font-weight:900;line-height:1;color:var(--wh);font-variant-numeric:tabular-nums;letter-spacing:-.04em;text-shadow:0 0 40px rgba(200,168,75,.5);margin-bottom:8px}
 .timer-mmss.warn{color:var(--orange);text-shadow:0 0 40px rgba(230,126,34,.6)}
 .timer-mmss.danger{color:var(--red);text-shadow:0 0 40px rgba(192,57,43,.7)}
 .timer-flag-name{font-family:var(--fd);font-size:13px;font-weight:600;color:var(--off);letter-spacing:.06em}
@@ -77,7 +124,7 @@ button,input,select,textarea{font-family:var(--fb);color:inherit;-webkit-appeara
 .flag-disp{margin:14px auto 0;display:flex;align-items:center;justify-content:center;gap:12px}
 .flag-svg{width:60px;height:42px;border:2px solid #03101e;box-shadow:0 4px 16px rgba(0,0,0,.5);border-radius:2px}
 .flag-info{text-align:left}
-.flag-letter{font-family:var(--fd);font-size:32px;font-weight:900;color:var(--acc2);line-height:1}
+.flag-letter{font-family:var(--fd);font-size:32px;font-weight:900;color:var(--wh);line-height:1}
 .flag-meaning{font-size:12px;color:var(--mut);margin-top:2px}
 
 /* TIMER CONTROLS */
@@ -85,17 +132,17 @@ button,input,select,textarea{font-family:var(--fb);color:inherit;-webkit-appeara
 
 /* FLAG GRID */
 .flag-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:10px}
-.flag-card{background:rgba(13,37,64,.7);border:1px solid var(--bdr2);border-radius:8px;padding:10px;cursor:pointer;display:flex;align-items:center;gap:10px}
+.flag-card{background:var(--surface);border:1px solid var(--bdr2);border-radius:8px;padding:10px;cursor:pointer;display:flex;align-items:center;gap:10px}
 .flag-card:active{border-color:var(--acc)}
 .flag-card .flag-svg{width:44px;height:30px;flex-shrink:0}
 .flag-card-info{flex:1;min-width:0}
-.flag-card-letter{font-family:var(--fd);font-size:16px;font-weight:800;color:var(--acc2);line-height:1}
+.flag-card-letter{font-family:var(--fd);font-size:16px;font-weight:800;color:var(--wh);line-height:1}
 .flag-card-name{font-size:11px;color:var(--mut);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* PLACEHOLDER PANELS */
 .coming-soon{padding:40px 20px;text-align:center}
 .coming-soon-icon{font-size:48px;opacity:.2;margin-bottom:10px}
-.coming-soon-title{font-family:var(--fd);font-size:18px;font-weight:700;letter-spacing:.06em;color:var(--acc2);margin-bottom:6px}
+.coming-soon-title{font-family:var(--fd);font-size:18px;font-weight:700;letter-spacing:.06em;color:var(--wh);margin-bottom:6px}
 .coming-soon-text{font-size:13px;color:var(--mut);line-height:1.6}
 
 /* GROUP TITLE */
@@ -104,7 +151,7 @@ button,input,select,textarea{font-family:var(--fb);color:inherit;-webkit-appeara
 /* SHEET */
 .sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:900;display:none;align-items:flex-end;justify-content:center;backdrop-filter:blur(4px)}
 .sheet-bg.open{display:flex}
-.sheet{background:#0a1e38;border:1px solid var(--bdr);border-bottom:none;width:100%;max-width:520px;max-height:92dvh;border-radius:20px 20px 0 0;padding:20px 14px calc(28px + env(safe-area-inset-bottom));overflow-y:auto;animation:su .28s cubic-bezier(.2,.8,.3,1)}
+.sheet{background:var(--bg2);border:1px solid var(--bdr);border-bottom:none;width:100%;max-width:520px;max-height:92dvh;border-radius:20px 20px 0 0;padding:20px 14px calc(28px + env(safe-area-inset-bottom));overflow-y:auto;animation:su .28s cubic-bezier(.2,.8,.3,1)}
 @keyframes su{from{transform:translateY(100%)}to{transform:translateY(0)}}
 @keyframes buoyPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.15);opacity:.85}}
 .buoy-pulse{animation:buoyPulse 1.5s ease-in-out infinite}
@@ -113,13 +160,13 @@ button,input,select,textarea{font-family:var(--fb);color:inherit;-webkit-appeara
 .sheet-close{border:1px solid var(--bdr2);background:rgba(255,255,255,.05);color:var(--mut);font-size:12px;cursor:pointer;padding:5px 12px;border-radius:6px;font-weight:600;font-family:var(--fd);letter-spacing:.05em}
 
 /* TOAST */
-.toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,var(--bg2),var(--bg3));border:1px solid var(--bdr);color:var(--wh);padding:10px 20px;border-radius:8px;font-family:var(--fd);font-size:14px;font-weight:600;z-index:1000;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap;max-width:90vw}
+.toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:var(--nav);border:1px solid var(--bdr);color:var(--wh);padding:10px 20px;border-radius:8px;font-family:var(--fd);font-size:14px;font-weight:600;z-index:1000;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap;max-width:90vw}
 .toast.show{opacity:1}
 
 /* FLAG DETAIL IN SHEET */
 .flag-detail{padding:20px 14px;text-align:center}
 .flag-detail .flag-svg-big{width:160px;height:110px;margin:0 auto 16px;border:2px solid #03101e;box-shadow:0 8px 32px rgba(0,0,0,.6);border-radius:3px}
-.flag-detail-letter{font-family:var(--fd);font-size:36px;font-weight:900;color:var(--acc2);margin-bottom:4px}
+.flag-detail-letter{font-family:var(--fd);font-size:36px;font-weight:900;color:var(--wh);margin-bottom:4px}
 .flag-detail-name{font-family:var(--fb);font-size:14px;color:var(--mut);margin-bottom:14px;letter-spacing:.04em}
 .flag-detail-meaning{font-size:15px;line-height:1.5;color:var(--off);text-align:left;background:rgba(200,168,75,.05);border-left:3px solid var(--acc);padding:12px 14px;border-radius:0 6px 6px 0}
 
@@ -140,9 +187,50 @@ button,input,select,textarea{font-family:var(--fb);color:inherit;-webkit-appeara
   .timer-mmss{font-size:72px}
   .flag-grid{grid-template-columns:repeat(4,1fr)}
 }
+
+/* ── REGATTA HELL-MODUS OVERRIDES ── */
+[data-theme="light"] .pnl { box-shadow: var(--shadow); }
+[data-theme="light"] .timer-mmss { color: var(--wh); text-shadow: none; }
+[data-theme="light"] .timer-mmss.warn { color: var(--orange); }
+[data-theme="light"] .timer-mmss.danger { color: var(--red); }
+[data-theme="light"] .race-val-num { color: var(--wh); text-shadow: none; }
+[data-theme="light"] .race-buoy-dist { color: var(--acc); }
+[data-theme="light"] .tab { color: rgba(255,255,255,.5); }
+[data-theme="light"] .tab.active { color: #fff; }
+[data-theme="light"] .flag-card { background: var(--surface); border-color: var(--bdr); }
+[data-theme="light"] .flag-card:active { border-color: var(--acc); background: rgba(200,16,46,.05); }
+[data-theme="light"] .race-buoy { background: var(--surface); }
+[data-theme="light"] .race-compass { background: var(--surface); border-color: var(--bdr); }
+[data-theme="light"] .race-val { background: var(--surface); border-color: var(--bdr); }
+[data-theme="light"] .race-heel { background: var(--surface); border-color: var(--bdr); }
+[data-theme="light"] .race-action-btn { background: var(--bg3); border-color: var(--bdr); color: var(--off); }
+[data-theme="light"] .timer-hero { background: var(--surface); border-color: var(--bdr); }
+[data-theme="light"] .btn-gold { background: var(--acc); color: #fff; box-shadow: 0 4px 16px rgba(200,16,46,.25); }
+[data-theme="light"] .btn-ghost { color: var(--acc); border-color: var(--acc); }
+[data-theme="light"] .btn-green { background: #16a34a; }
+[data-theme="light"] .btn-teal { background: var(--teal); }
+[data-theme="light"] .sheet { box-shadow: 0 -8px 40px rgba(0,0,0,.12); }
+[data-theme="light"] .race-status-btn { background: rgba(200,16,46,.08); border-color: rgba(200,16,46,.2); color: var(--acc); }
+[data-theme="light"] .hdr-link { color: rgba(255,255,255,.8); border-color: rgba(255,255,255,.2); }
+[data-theme="light"] .group-title { color: var(--acc); }
 </style>
 </head>
 <body>
+<script>
+(function(){
+  var t = localStorage.getItem('sckr_theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', t);
+  var btn = document.getElementById('theme-btn');
+  if(btn) btn.innerHTML = t === 'dark' ? '&#9728;' : '&#9790;';
+  ['acc','hdr','sec'].forEach(function(k) {
+    var v = localStorage.getItem('sckr_color_'+k);
+    if(v) {
+      var map = {acc:'--club-accent', hdr:'--club-header', sec:'--club-second'};
+      document.documentElement.style.setProperty(map[k], v);
+    }
+  });
+})();
+</script>
 
 <header class="hdr">
   <div class="hdr-top">
@@ -162,6 +250,7 @@ button,input,select,textarea{font-family:var(--fb);color:inherit;-webkit-appeara
       <div class="title">Regatta 2026</div>
     </div>
     <a href="fahrtenbuch.html" class="hdr-link">Fahrtenbuch</a>
+    <button id="theme-btn" onclick="(function(){var t=document.documentElement.getAttribute('data-theme')||'dark';var n=t==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);localStorage.setItem('sckr_theme',n);this.innerHTML=n==='dark'?'&#9728;':'&#9790;';}).call(this)" style="background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.8);border-radius:20px;padding:4px 10px;cursor:pointer;font-size:14px;font-family:var(--fd);font-weight:700">&#9790;</button>
   </div>
 </header>
 
@@ -360,7 +449,7 @@ SCKR.regatta.timer = {
         +   ['P','I','Z','U','BLK'].map(function(c){
               var f = SCKR.regatta.flags.byCode(c);
               if(!f) return '';
-              return '<div class="flag-card'+(c===st.selectedFlag?' sel':'')+'" onclick="SCKR.regatta.timer.selectFlag(\''+c+'\')" style="'+(c===st.selectedFlag?'border-color:var(--acc);background:rgba(200,168,75,.15)':'')+'">'
+              return '<div class="flag-card'+(c===st.selectedFlag?' sel':'')+'" onclick="SCKR.regatta.timer.selectFlag(\''+c+'\')" style="'+(c===st.selectedFlag?'border-color:var(--acc);background:rgba(200,16,46,.1)':'')+'">'
                 + '<svg class="flag-svg" viewBox="0 0 60 42">'+f.svg+'</svg>'
                 + '<div class="flag-card-info"><div class="flag-card-letter">'+f.code+'</div><div class="flag-card-name">'+f.name.split(' - ')[0]+'</div></div>'
                 + '</div>';
@@ -772,7 +861,7 @@ SCKR.regatta.chart = {
       +   '<div style="font-family:var(--fd);font-size:18px;font-weight:800;color:'+typeColor+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+SCKR.core.fmt.esc(current.name)+' / '+current.rounding+'</div>'
       + '</div>'
       + '<div style="text-align:right">'
-      +   '<div style="font-family:var(--fd);font-size:24px;font-weight:900;color:var(--acc2);font-variant-numeric:tabular-nums;line-height:1">'+Math.round(dist)+'<span style="font-size:12px;color:var(--acc3);margin-left:2px">m</span></div>'
+      +   '<div style="font-family:var(--fd);font-size:24px;font-weight:900;color:var(--wh);font-variant-numeric:tabular-nums;line-height:1">'+Math.round(dist)+'<span style="font-size:12px;color:var(--acc3);margin-left:2px">m</span></div>'
       +   '<div style="margin-top:2px">'+arrow+' <span style="font-family:var(--fd);font-size:11px;color:var(--mut)">'+Math.round(brng)+'&#176;</span></div>'
       + '</div></div>';
   },
@@ -1207,7 +1296,7 @@ SCKR.regatta.compass = {
     html += '<div class="pnl"><div class="phd"><span class="phd-t">Werte</span></div>'
       + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid var(--bdr2)">'
       +   '<div style="padding:14px;text-align:center;border-right:1px solid var(--bdr2)">'
-      +     '<div style="font-family:var(--fd);font-size:24px;font-weight:900;color:var(--acc2);font-variant-numeric:tabular-nums">'+SCKR.core.fmt.speed(speedMs)+'<span style="font-size:11px;color:var(--acc3);margin-left:2px">kn</span></div>'
+      +     '<div style="font-family:var(--fd);font-size:24px;font-weight:900;color:var(--wh);font-variant-numeric:tabular-nums">'+SCKR.core.fmt.speed(speedMs)+'<span style="font-size:11px;color:var(--acc3);margin-left:2px">kn</span></div>'
       +     '<div style="font-family:var(--fd);font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--mut);margin-top:3px">SPEED</div>'
       +   '</div>'
       +   '<div style="padding:14px;text-align:center;border-right:1px solid var(--bdr2)">'
@@ -1246,7 +1335,7 @@ SCKR.regatta.compass = {
       if(st.showTrimmHints) {
         if(trimmHint) {
           html += '<div style="padding:12px 14px">'
-            + '<div style="font-family:var(--fd);font-size:13px;font-weight:800;color:var(--acc2);margin-bottom:8px;letter-spacing:.04em">'+trimmHint.title+'</div>';
+            + '<div style="font-family:var(--fd);font-size:13px;font-weight:800;color:var(--wh);margin-bottom:8px;letter-spacing:.04em">'+trimmHint.title+'</div>';
           for(var i=0;i<trimmHint.tips.length;i++) {
             html += '<div style="font-size:13px;color:var(--off);padding:5px 0 5px 18px;line-height:1.5;position:relative">'
               + '<span style="position:absolute;left:0;color:var(--acc)">&#8226;</span>'+SCKR.core.fmt.esc(trimmHint.tips[i])
@@ -1424,8 +1513,8 @@ SCKR.regatta.taktik = {
         var bearing = SCKR.core.util.bearing(SCKR.core.gps.currentPos, {lat:current.lat,lng:current.lng});
         html += '<div class="pnl"><div class="phd"><span class="phd-t">Live-Werte</span></div>'
           + '<div style="display:grid;grid-template-columns:1fr 1fr">'
-          +   '<div style="padding:12px;text-align:center;border-right:1px solid var(--bdr2)"><div style="font-family:var(--fd);font-size:24px;font-weight:900;color:var(--acc2)">'+Math.round(dist)+'<span style="font-size:11px;color:var(--acc3)">m</span></div><div style="font-size:9px;color:var(--mut);font-family:var(--fd);font-weight:700;letter-spacing:.08em">DISTANZ</div></div>'
-          +   '<div style="padding:12px;text-align:center"><div style="font-family:var(--fd);font-size:24px;font-weight:900;color:var(--acc2)">'+Math.round(bearing)+'<span style="font-size:11px;color:var(--acc3)">&#176;</span></div><div style="font-size:9px;color:var(--mut);font-family:var(--fd);font-weight:700;letter-spacing:.08em">PEILUNG</div></div>'
+          +   '<div style="padding:12px;text-align:center;border-right:1px solid var(--bdr2)"><div style="font-family:var(--fd);font-size:24px;font-weight:900;color:var(--wh)">'+Math.round(dist)+'<span style="font-size:11px;color:var(--acc3)">m</span></div><div style="font-size:9px;color:var(--mut);font-family:var(--fd);font-weight:700;letter-spacing:.08em">DISTANZ</div></div>'
+          +   '<div style="padding:12px;text-align:center"><div style="font-family:var(--fd);font-size:24px;font-weight:900;color:var(--wh)">'+Math.round(bearing)+'<span style="font-size:11px;color:var(--acc3)">&#176;</span></div><div style="font-size:9px;color:var(--mut);font-family:var(--fd);font-weight:700;letter-spacing:.08em">PEILUNG</div></div>'
           + '</div></div>';
       }
     }
@@ -1558,7 +1647,7 @@ SCKR.regatta.trimm = {
       SCKR.core.ui.openSheet(
         '<div class="sheet-hd"><h3>'+SCKR.core.fmt.esc(fibel.klasse)+'</h3><button class="sheet-close" type="button" onclick="SCKR.core.ui.closeSheet()">SCHLIESSEN</button></div>'
         + '<div class="pnl"><div style="padding:30px 20px;text-align:center">'
-        + '<div style="font-family:var(--fd);font-size:18px;font-weight:700;color:var(--acc2);margin-bottom:10px">In Vorbereitung</div>'
+        + '<div style="font-family:var(--fd);font-size:18px;font-weight:700;color:var(--wh);margin-bottom:10px">In Vorbereitung</div>'
         + '<div style="font-size:13px;color:var(--mut);line-height:1.6">'+SCKR.core.fmt.esc(fibel._placeholder)+'</div>'
         + '</div></div>'
       );
@@ -1601,8 +1690,8 @@ SCKR.regatta.trimm = {
 
     if(st.logging) {
       html += '<div style="padding:0 10px 10px;display:grid;grid-template-columns:1fr 1fr;gap:6px">'
-        +     '<button class="btn-sm" onclick="SCKR.regatta.trimm.logEvent(\'wende\')" style="padding:9px;font-size:11px;border-radius:6px;background:rgba(200,168,75,.15);color:var(--acc2);border:1px solid var(--bdr);cursor:pointer">WENDE</button>'
-        +     '<button class="btn-sm" onclick="SCKR.regatta.trimm.logEvent(\'halse\')" style="padding:9px;font-size:11px;border-radius:6px;background:rgba(200,168,75,.15);color:var(--acc2);border:1px solid var(--bdr);cursor:pointer">HALSE</button>'
+        +     '<button class="btn-sm" onclick="SCKR.regatta.trimm.logEvent(\'wende\')" style="padding:9px;font-size:11px;border-radius:6px;background:rgba(200,16,46,.1);color:var(--wh);border:1px solid var(--bdr);cursor:pointer">WENDE</button>'
+        +     '<button class="btn-sm" onclick="SCKR.regatta.trimm.logEvent(\'halse\')" style="padding:9px;font-size:11px;border-radius:6px;background:rgba(200,16,46,.1);color:var(--wh);border:1px solid var(--bdr);cursor:pointer">HALSE</button>'
         +     '<button class="btn-sm" onclick="SCKR.regatta.trimm.logEvent(\'schwert_hoch\')" style="padding:9px;font-size:11px;border-radius:6px;background:rgba(26,171,160,.15);color:var(--teal);border:1px solid var(--bdr2);cursor:pointer">SCHWERT &#8593;</button>'
         +     '<button class="btn-sm" onclick="SCKR.regatta.trimm.logEvent(\'schwert_tief\')" style="padding:9px;font-size:11px;border-radius:6px;background:rgba(26,171,160,.15);color:var(--teal);border:1px solid var(--bdr2);cursor:pointer">SCHWERT &#8595;</button>'
         +     '<button class="btn-sm" onclick="SCKR.regatta.trimm.logEvent(\'achterstag_an\')" style="padding:9px;font-size:11px;border-radius:6px;background:rgba(230,126,34,.15);color:#e67e22;border:1px solid var(--bdr2);cursor:pointer">ACHTERSTAG +</button>'
