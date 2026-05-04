@@ -40,9 +40,10 @@
   --acc3:    var(--club-second);
   --teal:    #1E6FBF;
   --nav:     var(--club-header);
-  --wh:      #1a1a1a;
-  --off:     #444444;
-  --mut:     #999999;
+  --wh:      var(--club-text, #1a1a1a);
+  --nav-text: var(--club-nav-text, #FFFFFF);
+  --off:     var(--club-off, #444444);
+  --mut:     var(--club-mut, #999999);
   --bdr:     #E5E5E5;
   --bdr2:    rgba(200,16,46,.1);
   --shadow:  0 1px 8px rgba(0,0,0,.07);
@@ -59,9 +60,10 @@
   --acc3:    var(--club-second);
   --teal:    #2d7fd4;
   --nav:     var(--club-header);
-  --wh:      #F0F0F0;
-  --off:     #AAAAAA;
-  --mut:     #666666;
+  --wh:      var(--club-text, #F0F0F0);
+  --nav-text: var(--club-nav-text, #FFFFFF);
+  --off:     var(--club-off, #AAAAAA);
+  --mut:     var(--club-mut, #666666);
   --bdr:     rgba(255,255,255,.09);
   --bdr2:    rgba(200,16,46,.15);
   --shadow:  0 2px 12px rgba(0,0,0,.5);
@@ -83,7 +85,7 @@ button,input,select,textarea{font-family:var(--fb);color:inherit;-webkit-appeara
 .hdr-link{font-family:var(--fd);font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--acc);background:var(--bg3);border:1px solid var(--bdr);border-radius:4px;padding:5px 9px;cursor:pointer;text-decoration:none}
 
 /* TABS */
-.tabs{display:grid;grid-template-columns:repeat(6,1fr)}
+.tabs{display:grid;grid-template-columns:repeat(7,1fr)}
 .tab{background:transparent;border:none;border-top:2px solid transparent;color:var(--mut);font-family:var(--fd);font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:9px 2px 10px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer}
 .tab svg{width:16px;height:16px;fill:currentColor}
 .tab.active{color:var(--acc);border-top-color:var(--acc)}
@@ -222,28 +224,283 @@ button,input,select,textarea{font-family:var(--fb);color:inherit;-webkit-appeara
   document.documentElement.setAttribute('data-theme', t);
   var btn = document.getElementById('theme-btn');
   if(btn) btn.innerHTML = t === 'dark' ? '&#9728;' : '&#9790;';
-  ['acc','hdr','sec'].forEach(function(k) {
-    var v = localStorage.getItem('sckr_color_'+k);
-    if(v) {
-      var map = {acc:'--club-accent', hdr:'--club-header', sec:'--club-second'};
-      document.documentElement.style.setProperty(map[k], v);
-    }
+  // Farben aus Fahrtenbuch-Admin laden (geteilt via localStorage)
+  var colorMap = {
+    'acc':'--club-accent', 'hdr':'--club-header', 'sec':'--club-second',
+    'navtxt':'--club-nav-text', 'txt':'--club-text',
+    'off':'--off', 'mut':'--mut'
+  };
+  Object.keys(colorMap).forEach(function(k){
+    var v = localStorage.getItem('sckr_color_'+k+'_'+t);
+    if(v) document.documentElement.style.setProperty(colorMap[k], v);
   });
+
+/* ═══════════════════════════════════════════════════
+   TAB 8: STATISTIKEN - Wettfahrt-Auswertung
+   ═══════════════════════════════════════════════════ */
+SCKR.regatta.stats = {
+
+  render: function() {
+    var el = document.getElementById("stats");
+    if(!el) return;
+    var st = SCKR.regatta.trimm.state;
+    var sessions = st.savedSessions || [];
+    var esc = SCKR.core.fmt.esc;
+
+    var html = '<div style="padding:16px 14px 100px">';
+
+    // ── Live Race Control ────────────────────────
+    html += '<div class="pnl">';
+    html += '<div class="phd"><span class="phd-t">'+(st.raceActive?"WETTFAHRT AKTIV":"WETTFAHRT STARTEN")+'</span></div>';
+
+    if(!st.raceActive) {
+      html += '<div style="padding:12px 14px">'
+        + '<button class="btn btn-red" type="button" onclick="SCKR.regatta.trimm.startRace();SCKR.regatta.stats.render()" style="margin-bottom:8px">&#9654; WETTFAHRT STARTEN</button>'
+        + '<div style="font-size:12px;color:var(--mut);line-height:1.6">Startet Zeitmessung, Wende-/Halsen-Zaehlung und Trimm-Logging automatisch.</div>'
+        + '</div>';
+    } else {
+      // Live stats
+      var ls = SCKR.regatta.trimm.liveStats();
+      var elapsed = ls ? SCKR.core.fmt.time(ls.elapsed) : "--";
+      html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid var(--bdr2)">';
+      html += '<div style="padding:14px 8px;text-align:center;border-right:1px solid var(--bdr2)"><div style="font-family:var(--fd);font-size:28px;font-weight:900;color:var(--acc)">'+(ls?ls.wenden:0)+'</div><div style="font-family:var(--fd);font-size:9px;color:var(--mut);letter-spacing:.1em;margin-top:3px">WENDEN</div></div>';
+      html += '<div style="padding:14px 8px;text-align:center;border-right:1px solid var(--bdr2)"><div style="font-family:var(--fd);font-size:28px;font-weight:900;color:var(--teal)">'+(ls?ls.halsen:0)+'</div><div style="font-family:var(--fd);font-size:9px;color:var(--mut);letter-spacing:.1em;margin-top:3px">HALSEN</div></div>';
+      html += '<div style="padding:14px 8px;text-align:center"><div style="font-family:var(--fd);font-size:28px;font-weight:900;color:var(--wh)">'+(ls?ls.tonnen:0)+'</div><div style="font-family:var(--fd);font-size:9px;color:var(--mut);letter-spacing:.1em;margin-top:3px">TONNEN</div></div>';
+      html += '</div>';
+      html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid var(--bdr2)">';
+      html += '<div style="padding:10px 8px;text-align:center;border-right:1px solid var(--bdr2)"><div style="font-family:var(--fd);font-size:20px;font-weight:900;color:var(--wh)">'+elapsed+'</div><div style="font-family:var(--fd);font-size:9px;color:var(--mut);letter-spacing:.1em;margin-top:2px">FAHRZEIT</div></div>';
+      html += '<div style="padding:10px 8px;text-align:center;border-right:1px solid var(--bdr2)"><div style="font-family:var(--fd);font-size:20px;font-weight:900;color:var(--wh)">'+(ls?ls.maxSpeed:0)+'<span style="font-size:11px;color:var(--mut)">km/h</span></div><div style="font-family:var(--fd);font-size:9px;color:var(--mut);letter-spacing:.1em;margin-top:2px">V-MAX</div></div>';
+      html += '<div style="padding:10px 8px;text-align:center"><div style="font-family:var(--fd);font-size:20px;font-weight:900;color:var(--wh)">'+(ls?ls.avgSpeed:0)+'<span style="font-size:11px;color:var(--mut)">km/h</span></div><div style="font-family:var(--fd);font-size:9px;color:var(--mut);letter-spacing:.1em;margin-top:2px">DURCHSCHNITT</div></div>';
+      html += '</div>';
+      html += '<div style="padding:12px 14px">'
+        + '<button class="btn btn-red" type="button" onclick="SCKR.regatta.trimm.stopRace();SCKR.regatta.stats.render()" style="margin-bottom:0">&#9632; WETTFAHRT BEENDEN &amp; SPEICHERN</button>'
+        + '</div>';
+    }
+    html += '</div>';
+
+    // ── Gespeicherte Wettfahrten ─────────────────
+    html += '<div class="pnl"><div class="phd"><span class="phd-t">Gespeicherte Wettfahrten ('+sessions.length+')</span></div>';
+
+    if(sessions.length === 0) {
+      html += '<div style="padding:24px;text-align:center;font-size:13px;color:var(--mut)">Noch keine Wettfahrten gespeichert.</div>';
+    } else {
+      for(var i=0;i<sessions.length;i++) {
+        var s = sessions[i];
+        var dur = SCKR.core.fmt.time(s.durationSec||0);
+        html += '<div style="padding:14px 16px;border-bottom:1px solid var(--bdr2);cursor:pointer" onclick="SCKR.regatta.stats.showDetail('+i+')">'
+          + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">'
+          + '<div style="font-family:var(--fd);font-size:16px;font-weight:800;color:var(--wh)">'+esc(s.date)+' &mdash; '+esc(s.time)+'</div>'
+          + '<div style="font-family:var(--fd);font-size:13px;font-weight:700;color:var(--acc)">'+dur+'</div>'
+          + '</div>'
+          + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
+          + '<span style="font-family:var(--fd);font-size:11px;font-weight:700;padding:2px 8px;border-radius:3px;background:rgba(200,16,46,.1);color:var(--acc)">'+(s.wendCount||0)+' Wenden</span>'
+          + '<span style="font-family:var(--fd);font-size:11px;font-weight:700;padding:2px 8px;border-radius:3px;background:rgba(45,127,212,.1);color:var(--teal)">'+(s.halseCount||0)+' Halsen</span>'
+          + '<span style="font-family:var(--fd);font-size:11px;font-weight:700;padding:2px 8px;border-radius:3px;background:rgba(255,255,255,.06);color:var(--off)">'+(s.tonneCount||0)+' Tonnen</span>'
+          + (s.maxSpeed ? '<span style="font-family:var(--fd);font-size:11px;font-weight:700;padding:2px 8px;border-radius:3px;background:rgba(255,255,255,.06);color:var(--off)">Vmax '+s.maxSpeed.toFixed(1)+' km/h</span>' : '')
+          + '</div>'
+          + '</div>';
+      }
+    }
+    html += '</div>';
+
+    html += '</div>';
+    el.innerHTML = html;
+  },
+
+  showDetail: function(idx) {
+    var sessions = SCKR.regatta.trimm.state.savedSessions;
+    var s = sessions[idx];
+    if(!s) return;
+    var esc = SCKR.core.fmt.esc;
+    var dur = SCKR.core.fmt.time(s.durationSec||0);
+
+    var html = '<div class="sheet-hd"><h3>'+esc(s.date)+' &mdash; '+esc(s.time)+'</h3>'
+      + '<button class="sheet-close" type="button" onclick="SCKR.core.ui.closeSheet()">SCHLIESSEN</button></div>';
+
+    // Summary stats
+    html += '<div class="pnl"><div class="phd"><span class="phd-t">Zusammenfassung</span></div>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr">';
+    var mkS = function(val, lbl, color) {
+      return '<div style="padding:16px 8px;text-align:center;border-right:1px solid var(--bdr2)">'
+        + '<div style="font-family:var(--fd);font-size:32px;font-weight:900;color:'+(color||'var(--wh)')+'">'+val+'</div>'
+        + '<div style="font-family:var(--fd);font-size:9px;color:var(--mut);letter-spacing:.1em;margin-top:4px">'+lbl+'</div>'
+        + '</div>';
+    };
+    html += mkS(s.wendCount||0, "WENDEN", "var(--acc)");
+    html += mkS(s.halseCount||0, "HALSEN", "var(--teal)");
+    html += mkS(s.tonneCount||0, "TONNEN", "");
+    html += '</div>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr">';
+    html += mkS(dur, "FAHRZEIT", "");
+    html += mkS((s.maxSpeed||0).toFixed(1), "V-MAX km/h", "var(--acc)");
+    html += mkS((s.avgSpeed||0).toFixed(1), "Ø km/h", "");
+    html += '</div>';
+    if(s.windDir) {
+      html += '<div style="padding:10px 14px;border-top:1px solid var(--bdr2);font-family:var(--fd);font-size:12px;color:var(--mut)">Wind: '+Math.round(s.windDir)+'° &mdash; '+SCKR.core.fmt.compass(s.windDir)+'</div>';
+    }
+    html += '</div>';
+
+    // Trimm Log
+    if(s.log && s.log.length > 0) {
+      html += '<div class="pnl"><div class="phd"><span class="phd-t">Trimm-Log ('+s.log.length+' Events)</span></div>';
+      var typeLabel = {wende:"Wende",halse:"Halse",schwert_hoch:"Schwert hoch",schwert_tief:"Schwert tief",achterstag_an:"Achterstag an",achterstag_los:"Achterstag los",traveller_luv:"Traveller Luv",traveller_lee:"Traveller Lee",gust:"Boe",manuell:"Manuell"};
+      var typeColor = {wende:"var(--acc)",halse:"var(--teal)",gust:"#e67e22"};
+      for(var j=0;j<s.log.length;j++) {
+        var ev = s.log[j];
+        var evTime = new Date(ev.t).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+        var evLabel = typeLabel[ev.type] || ev.type;
+        var evColor = typeColor[ev.type] || "var(--off)";
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px;border-bottom:1px solid var(--bdr2)">'
+          + '<div style="display:flex;align-items:center;gap:10px">'
+          + '<div style="width:8px;height:8px;border-radius:50%;background:'+evColor+';flex-shrink:0"></div>'
+          + '<div style="font-size:13px;color:var(--wh);font-weight:600">'+esc(evLabel)+'</div>'
+          + (ev.value ? '<div style="font-size:11px;color:var(--mut)">'+esc(String(ev.value))+'</div>' : '')
+          + '</div>'
+          + '<div style="font-family:var(--fd);font-size:11px;color:var(--mut)">'+evTime+'</div>'
+          + '</div>';
+      }
+      html += '</div>';
+    }
+
+    // Delete button
+    html += '<div style="padding:0 14px 14px;display:flex;gap:8px">'
+      + '<button class="btn btn-red" type="button" onclick="SCKR.regatta.stats.exportToFahrtenbuch('+idx+')" style="flex:2;margin:0">&#8646; INS FAHRTENBUCH</button>'
+      + '<button class="btn" type="button" onclick="SCKR.regatta.stats.deleteSession('+idx+')" style="flex:1;margin:0;background:rgba(192,57,43,.2);color:#e74c3c;border:none">LOESCHEN</button>'
+      + '</div>';
+
+    SCKR.core.ui.openSheet(html);
+  },
+
+  deleteSession: function(idx) {
+    if(!confirm("Wettfahrt loeschen?")) return;
+    SCKR.regatta.trimm.state.savedSessions.splice(idx, 1);
+    SCKR.core.storage.set("regatta_sessions", SCKR.regatta.trimm.state.savedSessions);
+    SCKR.core.ui.closeSheet();
+    SCKR.regatta.stats.render();
+  },
+
+  /* ── Export ins Fahrtenbuch ── */
+  exportToFahrtenbuch: function(idx) {
+    var sessions = SCKR.regatta.trimm.state.savedSessions;
+    var s = sessions[idx];
+    if(!s) return;
+
+    // Baue Fahrtenbuch-kompatibles Trip-Objekt
+    var trip = {
+      id: "regatta_"+s.id,
+      date: s.date,
+      startTime: new Date(s.raceStart||s.id).toISOString(),
+      endTime:   s.durationSec ? new Date((s.raceStart||s.id) + s.durationSec*1000).toISOString() : null,
+      category: "Binnen",
+      type: "Regatta",
+      boat: "",
+      description: "Regatta "+s.date+" "+s.time
+        + " | "+s.wendCount+" Wenden, "+s.halseCount+" Halsen"
+        + " | Vmax: "+(s.maxSpeed||0).toFixed(1)+" km/h",
+      km: 0, // GPS nicht verfuegbar waehrend Regatta
+      sailKm: 0, motorKm: 0,
+      maxSpeed: s.maxSpeed || 0,
+      avgSpeed: s.avgSpeed || 0,
+      hasRegattaFn: true,
+      regattaData: {
+        wenden:  s.wendCount  || 0,
+        halsen:  s.halseCount || 0,
+        tonnen:  s.tonneCount || 0,
+        boeen:   s.gustCount  || 0,
+        dauer:   s.durationSec || 0,
+        windDir: s.windDir || null,
+        log:     s.log || []
+      },
+      trackPoints: [],
+      infraEvents: [],
+      points: 0,
+      _source: "regatta"
+    };
+
+    // Als JSON zum Download/Teilen anbieten
+    var json = JSON.stringify({version:2, trips:[trip]}, null, 2);
+    var filename = "Regatta_"+s.date+"_Fahrtenbuch.json";
+    var blob = new Blob([json], {type:"application/json"});
+    var file = new File([blob], filename, {type:"application/json"});
+
+    var esc = SCKR.core.fmt.esc;
+    var html = '<div class="sheet-hd"><h3>INS FAHRTENBUCH</h3>'
+      + '<button class="sheet-close" type="button" onclick="SCKR.core.ui.closeSheet()">X</button></div>'
+      + '<div class="pnl"><div class="phd"><span class="phd-t">Wettfahrt uebertragen</span></div>'
+      + '<div style="padding:14px;font-size:13px;color:var(--off);line-height:1.7">'
+      + '<strong>'+esc(s.date)+' &mdash; '+esc(s.time)+'</strong><br>'
+      + s.wendCount+' Wenden &middot; '+s.halseCount+' Halsen &middot; '+s.tonneCount+' Tonnen<br>'
+      + 'Vmax: '+(s.maxSpeed||0).toFixed(1)+' km/h &middot; &Oslash; '+(s.avgSpeed||0).toFixed(1)+' km/h'
+      + '</div>'
+      + '<div style="padding:0 14px 14px;display:flex;flex-direction:column;gap:8px">'
+
+      // Option A: Direkt ueber localStorage (wenn auf gleichem Geraet)
+      + '<button type="button" class="btn btn-red" onclick="SCKR.regatta.stats._writeTripToStorage('+JSON.stringify(trip).replace(/</g,'&lt;').replace(/>/g,'&gt;')+')" style="text-align:left;padding:14px">'
+      + '<div style="font-family:var(--fd);font-size:15px;font-weight:900">&#8646; DIREKT IMPORTIEREN</div>'
+      + '<div style="font-size:11px;color:rgba(255,255,255,.7);margin-top:2px">In Fahrtenbuch-App (gleiches Geraet &amp; Browser)</div>'
+      + '</button>'
+
+      // Option B: Als JSON-Datei exportieren
+      + '<button type="button" class="btn" style="background:var(--bg3);border:2px solid var(--bdr);color:var(--wh);text-align:left;padding:14px" onclick="SCKR.regatta.stats._exportSessionFile('+idx+')">'
+      + '<div style="font-family:var(--fd);font-size:15px;font-weight:900">&#8681; ALS BACKUP HERUNTERLADEN</div>'
+      + '<div style="font-size:11px;color:var(--mut);margin-top:2px">JSON importieren ins Fahrtenbuch</div>'
+      + '</button>'
+
+      // Option C: Teilen (iCloud)
+      + '<button type="button" class="btn" style="background:var(--bg3);border:2px solid var(--bdr);color:var(--wh);text-align:left;padding:14px" onclick="SCKR.regatta.stats._shareSessionFile('+idx+')">'
+      + '<div style="font-family:var(--fd);font-size:15px;font-weight:900">&#8679; TEILEN / iCLOUD</div>'
+      + '<div style="font-size:11px;color:var(--mut);margin-top:2px">iCloud Drive, AirDrop, Mail...</div>'
+      + '</button>'
+
+      + '</div></div>';
+
+    SCKR.regatta.stats._pendingTrip = {trip: trip, file: file, filename: filename, json: json};
+    SCKR.core.ui.openSheet(html);
+  },
+
+  _writeTripToStorage: async function(trip) {
+    try {
+      // Schreibe direkt in Fahrtenbuch-Storage (gleicher localStorage)
+      var key = "trip:"+trip.id;
+      await SCKR.core.storage.set(key, trip);
+      SCKR.core.ui.closeSheet();
+      SCKR.core.ui.toast("IMPORTIERT! Im Fahrtenbuch unter Fahrten sichtbar.");
+    } catch(e) {
+      SCKR.core.ui.toast("FEHLER: "+e.message);
+    }
+  },
+
+  _exportSessionFile: function(idx) {
+    var p = SCKR.regatta.stats._pendingTrip;
+    if(!p) return;
+    var blob = new Blob([p.json], {type:"application/json"});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = p.filename; a.click();
+    setTimeout(function(){URL.revokeObjectURL(url);}, 1000);
+    SCKR.core.ui.toast("HERUNTERGELADEN");
+  },
+
+  _shareSessionFile: function(idx) {
+    var p = SCKR.regatta.stats._pendingTrip;
+    if(!p) return;
+    if(navigator.share && navigator.canShare && navigator.canShare({files:[p.file]})) {
+      navigator.share({files:[p.file], title:"Regatta Fahrtenbuch", text:p.filename})
+        .then(function(){ SCKR.core.ui.toast("GETEILT"); })
+        .catch(function(e){ if(e.name!=="AbortError") SCKR.regatta.stats._exportSessionFile(idx); });
+    } else {
+      SCKR.regatta.stats._exportSessionFile(idx);
+    }
+  }
+};
+
 })();
 </script>
 
 <header class="hdr">
   <div class="hdr-top">
     <div class="hdr-logo">
-      <svg viewBox="0 0 44 44" width="40" height="40">
-        <defs><radialGradient id="lg" cx="40%" cy="35%" r="65%"><stop offset="0%" stop-color="#163358"/><stop offset="100%" stop-color="#03101e"/></radialGradient></defs>
-        <circle cx="22" cy="22" r="21" fill="url(#lg)" stroke="#C8A84B" stroke-width="1.2"/>
-        <path d="M14 29 L16 34 L28 34 L30 29 Z" fill="#C8A84B" opacity=".9"/>
-        <line x1="22" y1="12" x2="22" y2="29" stroke="#E2C46A" stroke-width="1.2"/>
-        <path d="M22 13 L22 27 L13 27 Q16 21 22 13Z" fill="white" opacity=".92"/>
-        <path d="M22 17 L22 27 L31 25 Z" fill="white" opacity=".65"/>
-        <text x="22" y="41" text-anchor="middle" font-family="sans-serif" font-size="6" font-weight="900" fill="#C8A84B" letter-spacing="1">SCK</text>
-      </svg>
+      <img src="data:image/jpeg;base64,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" style="width:40px;height:40px;object-fit:cover;border-radius:50%" onerror="this.style.display='none'">
     </div>
     <div class="hdr-text">
       <div class="club" id="club-name">Segel-Club Kruepelsee e.V.</div>
@@ -260,6 +517,7 @@ button,input,select,textarea{font-family:var(--fb);color:inherit;-webkit-appeara
 <main id="compass" class="screen"></main>
 <main id="taktik"  class="screen"></main>
 <main id="trimm"   class="screen"></main>
+<main id="stats"   class="screen"></main>
 
 <nav class="tabbar-fixed">
   <div class="tabs">
@@ -286,6 +544,10 @@ button,input,select,textarea{font-family:var(--fb);color:inherit;-webkit-appeara
     <button class="tab" id="tab-trimm" onclick="SCKR.core.goto('trimm')">
       <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h16"/><circle cx="17" cy="12" r="2"/></svg>
       Trimm
+    </button>
+    <button class="tab" id="tab-stats" onclick="SCKR.core.goto('stats')">
+      <svg viewBox="0 0 24 24"><path d="M4 20V10h4v10M10 20V4h4v16M16 20v-6h4v6" fill="currentColor"/></svg>
+      Statistik
     </button>
   </div>
 </nav>
@@ -874,6 +1136,7 @@ SCKR.regatta.chart = {
       SCKR.regatta.chart.saveCourse();
       SCKR.regatta.chart.renderMap();
       SCKR.core.ui.toast("WEITER ZU: " + c.buoys[c.currentBuoyIdx].name);
+    if(SCKR.regatta.trimm.state.raceActive) SCKR.regatta.trimm.state.tonneCount++;
     }
   },
   prevBuoy: function() {
@@ -1203,46 +1466,87 @@ SCKR.regatta.compass = {
   },
 
   /* Big compass with wind arrow + heading */
-  bigCompassSVG: function(heading, windDir, twa) {
+  digitalCompass: function(heading, windDir, twa) {
     var h = heading || 0;
-    var w = (windDir!==null && windDir!==undefined) ? windDir : null;
-    var svg = '<svg viewBox="0 0 200 200" width="100%" height="100%" style="max-width:280px;max-height:280px;display:block;margin:0 auto">';
-    svg += '<defs><radialGradient id="bcbg" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#163555"/><stop offset="100%" stop-color="#03101e"/></radialGradient></defs>';
-    svg += '<circle cx="100" cy="100" r="95" fill="url(#bcbg)" stroke="#C8A84B" stroke-width="2"/>';
-    // Inner rings
-    svg += '<circle cx="100" cy="100" r="80" fill="none" stroke="#8C7030" stroke-width=".5" opacity=".5"/>';
-    svg += '<circle cx="100" cy="100" r="60" fill="none" stroke="#8C7030" stroke-width=".5" opacity=".3"/>';
-    // Cardinal text
-    svg += '<text x="100" y="22" text-anchor="middle" fill="#C8A84B" font-family="Barlow Condensed" font-size="14" font-weight="900">N</text>';
-    svg += '<text x="180" y="105" text-anchor="middle" fill="#8C7030" font-family="Barlow Condensed" font-size="12" font-weight="700">O</text>';
-    svg += '<text x="100" y="188" text-anchor="middle" fill="#8C7030" font-family="Barlow Condensed" font-size="12" font-weight="700">S</text>';
-    svg += '<text x="20" y="105" text-anchor="middle" fill="#8C7030" font-family="Barlow Condensed" font-size="12" font-weight="700">W</text>';
-    // Tick marks
+    var w = (windDir !== null && windDir !== undefined) ? windDir : null;
+    var dir = SCKR.core.fmt.compass(h);
+    var wdir = w !== null ? SCKR.core.fmt.compass(w) : null;
+
+    // Berechne TWA-Farbe
+    var twaColor = "#AAAAAA";
+    if(twa !== null && twa !== undefined) {
+      twaColor = twa > 0 ? "#1AABA0" : "#e67e22";
+    }
+
+    // Ring-Arc fuer Heading-Richtung
+    var arc = function(deg, r) {
+      var rad = (deg - 90) * Math.PI / 180;
+      return {x: 100 + r * Math.cos(rad), y: 100 + r * Math.sin(rad)};
+    };
+    var arcPath = function(fromDeg, toDeg, r) {
+      var p1 = arc(fromDeg, r), p2 = arc(toDeg, r);
+      var large = (toDeg - fromDeg + 360) % 360 > 180 ? 1 : 0;
+      return "M"+p1.x.toFixed(1)+" "+p1.y.toFixed(1)+" A"+r+" "+r+" 0 "+large+" 1 "+p2.x.toFixed(1)+" "+p2.y.toFixed(1);
+    };
+
+    // Heading-Arc (20 Grad Bogen)
+    var hArc = arcPath(h - 12, h + 12, 78);
+    // Wind-Arc wenn vorhanden
+    var wArc = w !== null ? arcPath(w - 8, w + 8, 68) : null;
+
+    // Kardinalpunkte
+    var cardinals = [
+      {deg:0,  lbl:"N", bold:true},
+      {deg:90, lbl:"O", bold:false},
+      {deg:180,lbl:"S", bold:false},
+      {deg:270,lbl:"W", bold:false}
+    ];
+
+    var svg = '<svg viewBox="0 0 200 200" width="100%" height="100%" style="max-width:300px;max-height:300px;display:block;margin:0 auto">';
+    // Hintergrund
+    svg += '<circle cx="100" cy="100" r="96" fill="#0d0d0d" stroke="rgba(255,255,255,.08)" stroke-width="1"/>';
+    // Skalenring
+    svg += '<circle cx="100" cy="100" r="82" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="12"/>';
+    // Grad-Markierungen alle 30
     for(var deg=0; deg<360; deg+=30) {
-      var rad = (deg-90)*Math.PI/180;
-      var x1 = 100 + Math.cos(rad)*88, y1 = 100 + Math.sin(rad)*88;
-      var x2 = 100 + Math.cos(rad)*94, y2 = 100 + Math.sin(rad)*94;
-      svg += '<line x1="'+x1.toFixed(1)+'" y1="'+y1.toFixed(1)+'" x2="'+x2.toFixed(1)+'" y2="'+y2.toFixed(1)+'" stroke="#8C7030" stroke-width="1" opacity=".7"/>';
+      var p1 = arc(deg, 86), p2 = arc(deg, 76);
+      svg += '<line x1="'+p1.x.toFixed(1)+'" y1="'+p1.y.toFixed(1)+'" x2="'+p2.x.toFixed(1)+'" y2="'+p2.y.toFixed(1)+'" stroke="rgba(255,255,255,.2)" stroke-width="1.5"/>';
     }
-    // Wind arrow (kommt AUS dieser Richtung)
-    if(w !== null) {
-      svg += '<g transform="rotate('+w+' 100 100)">';
-      svg += '<path d="M 100 18 L 92 36 L 100 32 L 108 36 Z" fill="#1AABA0" stroke="#fff" stroke-width=".8" opacity=".95"/>';
-      svg += '<text x="100" y="50" text-anchor="middle" fill="#1AABA0" font-family="Barlow Condensed" font-size="10" font-weight="800">WIND</text>';
-      svg += '</g>';
+    // Grad-Markierungen alle 10
+    for(var deg2=0; deg2<360; deg2+=10) {
+      if(deg2 % 30 !== 0) {
+        var p3 = arc(deg2, 86), p4 = arc(deg2, 80);
+        svg += '<line x1="'+p3.x.toFixed(1)+'" y1="'+p3.y.toFixed(1)+'" x2="'+p4.x.toFixed(1)+'" y2="'+p4.y.toFixed(1)+'" stroke="rgba(255,255,255,.1)" stroke-width="1"/>';
+      }
     }
-    // Heading needle (Kursueberground)
-    svg += '<g transform="rotate('+h+' 100 100)">';
-    svg += '<path d="M 100 30 L 92 100 L 108 100 Z" fill="#C8A84B" stroke="#fff" stroke-width="1"/>';
-    svg += '<path d="M 100 170 L 92 100 L 108 100 Z" fill="#C0392B" opacity=".75"/>';
-    svg += '<circle cx="100" cy="100" r="6" fill="#E2C46A" stroke="#03101e" stroke-width="1"/>';
-    svg += '</g>';
-    // Center heading number
-    svg += '<text x="100" y="135" text-anchor="middle" fill="#E2C46A" font-family="Barlow Condensed" font-size="18" font-weight="900">'+Math.round(h)+'&#176;</text>';
-    svg += '<text x="100" y="148" text-anchor="middle" fill="#8C7030" font-family="Barlow Condensed" font-size="10" font-weight="700">'+SCKR.core.fmt.compass(h)+'</text>';
+    // Wind-Arc (tuerkis)
+    if(wArc) svg += '<path d="'+wArc+'" fill="none" stroke="#1AABA0" stroke-width="8" stroke-linecap="round" opacity=".7"/>';
+    // Heading-Arc (Vereinsfarbe / rot)
+    svg += '<path d="'+hArc+'" fill="none" stroke="var(--acc,#C8102E)" stroke-width="10" stroke-linecap="round"/>';
+    // Kardinalrichtungen
+    for(var ci=0; ci<cardinals.length; ci++) {
+      var cp = arc(cardinals[ci].deg, 60);
+      svg += '<text x="'+cp.x.toFixed(1)+'" y="'+(cp.y+4).toFixed(1)+'" text-anchor="middle" fill="'+(cardinals[ci].bold?"#FFFFFF":"rgba(255,255,255,.5)")+'" font-family="Barlow Condensed" font-size="'+(cardinals[ci].bold?13:11)+'" font-weight="'+(cardinals[ci].bold?900:600)+'">'+cardinals[ci].lbl+'</text>';
+    }
+    // Zentrum: grosse Gradanzeige
+    svg += '<text x="100" y="90" text-anchor="middle" fill="#FFFFFF" font-family="Barlow Condensed" font-size="38" font-weight="900" font-variant-numeric="tabular-nums">'+Math.round(h)+'</text>';
+    svg += '<text x="100" y="110" text-anchor="middle" fill="rgba(255,255,255,.6)" font-family="Barlow Condensed" font-size="14" font-weight="700">'+dir+'</text>';
+    // Wind-Info
+    if(wdir) {
+      svg += '<text x="100" y="130" text-anchor="middle" fill="#1AABA0" font-family="Barlow Condensed" font-size="11" font-weight="700">Wind: '+wdir+'</text>';
+    }
+    // TWA
+    if(twa !== null && twa !== undefined) {
+      var twaStr = (twa > 0 ? "+" : "") + Math.round(twa) + "° " + (twa > 0 ? "BB" : twa < 0 ? "StB" : "");
+      svg += '<text x="100" y="148" text-anchor="middle" fill="'+twaColor+'" font-family="Barlow Condensed" font-size="13" font-weight="800">TWA '+twaStr+'</text>';
+    }
     svg += '</svg>';
     return svg;
   },
+
+  /* Legacy alias */
+  bigCompassSVG: function(h, w, t) { return SCKR.regatta.compass.digitalCompass(h, w, t); },
+  
 
   /* Heel meter SVG */
   heelSVG: function(roll) {
@@ -1296,7 +1600,7 @@ SCKR.regatta.compass = {
     html += '<div class="pnl"><div class="phd"><span class="phd-t">Werte</span></div>'
       + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid var(--bdr2)">'
       +   '<div style="padding:14px;text-align:center;border-right:1px solid var(--bdr2)">'
-      +     '<div style="font-family:var(--fd);font-size:24px;font-weight:900;color:var(--wh);font-variant-numeric:tabular-nums">'+SCKR.core.fmt.speed(speedMs)+'<span style="font-size:11px;color:var(--acc3);margin-left:2px">kn</span></div>'
+      +     '<div style="font-family:var(--fd);font-size:24px;font-weight:900;color:var(--wh);font-variant-numeric:tabular-nums">'+SCKR.core.fmt.speed(speedMs)+'<span style="font-size:11px;color:var(--acc3);margin-left:2px">km/h</span></div>'
       +     '<div style="font-family:var(--fd);font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--mut);margin-top:3px">SPEED</div>'
       +   '</div>'
       +   '<div style="padding:14px;text-align:center;border-right:1px solid var(--bdr2)">'
@@ -1537,7 +1841,21 @@ SCKR.regatta.trimm = {
     logging: false,
     log: [],
     sessionStart: null,
-    showFibel: null   // null | klassen-key
+    showFibel: null,
+    // Race session tracking
+    raceActive: false,
+    raceStart: null,
+    raceEnd: null,
+    wendCount: 0,
+    halseCount: 0,
+    tonneCount: 0,
+    gustCount: 0,
+    speedSamples: [],
+    maxSpeed: 0,
+    avgSpeed: 0,
+    windDir: null,
+    startDelay: null,   // Sekunden nach Start-Signal
+    savedSessions: []   // gespeicherte Wettfahrten
   },
 
   /* Logging Events (event-basiert, nicht sekuendlich) */
@@ -1556,8 +1874,90 @@ SCKR.regatta.trimm = {
       wind: SCKR.regatta.compass.state.windData
     };
     st.log.push(entry);
+    if(st.raceActive) {
+      if(type==="wende") st.wendCount++;
+      if(type==="halse") st.halseCount++;
+      if(type==="gust")  st.gustCount++;
+    }
     SCKR.core.ui.toast("LOG: " + type);
     SCKR.core.ui.vibrate(30);
+  },
+
+  /* ── RACE SESSION ── */
+  startRace: function() {
+    var st = SCKR.regatta.trimm.state;
+    st.raceActive = true;
+    st.raceStart = Date.now();
+    st.raceEnd = null;
+    st.wendCount = 0; st.halseCount = 0; st.tonneCount = 0; st.gustCount = 0;
+    st.speedSamples = []; st.maxSpeed = 0; st.avgSpeed = 0;
+    st.windDir = SCKR.regatta.compass.state.windData ? SCKR.regatta.compass.state.windData.dir : null;
+    // Auto-start trimm logging
+    if(!st.logging) SCKR.regatta.trimm.startLogging();
+    SCKR.core.ui.toast("WETTFAHRT GESTARTET");
+    SCKR.core.ui.vibrate(60);
+  },
+
+  stopRace: function() {
+    var st = SCKR.regatta.trimm.state;
+    if(!st.raceActive) return;
+    st.raceEnd = Date.now();
+    st.raceActive = false;
+    // Calc avg speed
+    if(st.speedSamples.length > 0)
+      st.avgSpeed = st.speedSamples.reduce(function(a,b){return a+b;},0)/st.speedSamples.length;
+    // Save session
+    var session = {
+      id: Date.now(),
+      date: new Date(st.raceStart).toLocaleDateString('de-DE'),
+      time: new Date(st.raceStart).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}),
+      durationSec: Math.round((st.raceEnd - st.raceStart)/1000),
+      wendCount: st.wendCount,
+      halseCount: st.halseCount,
+      tonneCount: st.tonneCount,
+      gustCount: st.gustCount,
+      maxSpeed: st.maxSpeed,
+      avgSpeed: st.avgSpeed,
+      windDir: st.windDir,
+      log: st.log.slice()
+    };
+    st.savedSessions.unshift(session);
+    // Persist
+    SCKR.core.storage.set("regatta_sessions", st.savedSessions);
+    SCKR.core.ui.toast("WETTFAHRT GESPEICHERT");
+    SCKR.core.ui.vibrate([100,50,100]);
+    SCKR.regatta.trimm.stopLogging && SCKR.regatta.trimm.stopLogging();
+    return session;
+  },
+
+  trackSpeed: function() {
+    var st = SCKR.regatta.trimm.state;
+    if(!st.raceActive) return;
+    var spd = SCKR.core.gps.currentSpeed * 3.6; // km/h
+    if(spd > 0.5) {
+      st.speedSamples.push(spd);
+      if(spd > st.maxSpeed) st.maxSpeed = spd;
+      if(st.speedSamples.length > 500) st.speedSamples.shift();
+    }
+  },
+
+  liveStats: function() {
+    var st = SCKR.regatta.trimm.state;
+    if(!st.raceActive) return null;
+    var elapsed = Math.round((Date.now() - st.raceStart)/1000);
+    var avg = st.speedSamples.length > 0
+      ? (st.speedSamples.reduce(function(a,b){return a+b;},0)/st.speedSamples.length).toFixed(1)
+      : "0.0";
+    return {
+      elapsed: elapsed,
+      wenden: st.wendCount,
+      halsen: st.halseCount,
+      tonnen: st.tonneCount,
+      boeen: st.gustCount,
+      maxSpeed: st.maxSpeed.toFixed(1),
+      avgSpeed: avg,
+      windDir: st.windDir
+    };
   },
 
   startLogging: function() {
@@ -1774,6 +2174,7 @@ SCKR.regatta.placeholder = function(tabId, title, text, sessionInfo) {
   SCKR.core.registerTab("compass", function(){ SCKR.regatta.compass.render(); SCKR.regatta.compass.startRefresh(); });
   SCKR.core.registerTab("taktik",  function(){ SCKR.regatta.taktik.render(); });
   SCKR.core.registerTab("trimm",   function(){ SCKR.regatta.trimm.render(); });
+  SCKR.core.registerTab("stats",   function(){ SCKR.regatta.stats.render(); });
 
   // Profile + Boote laden (geteilt mit Fahrtenbuch)
   await SCKR.core.profile.load();
