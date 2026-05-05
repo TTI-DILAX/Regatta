@@ -458,7 +458,13 @@ SCKR.regatta.stats = {
     SCKR.core.ui.openSheet(html);
   },
 
-  _writeTripToStorage: async function(trip) {
+  _doDirectImport: async function() {
+    var p = SCKR.regatta.stats._pendingTrip;
+    if(!p || !p.trip) { SCKR.core.ui.toast("Bitte Wettfahrt auswaehlen"); return; }
+    await SCKR.regatta.stats._writeTripToStorage(p.trip);
+  },
+
+    _writeTripToStorage: async function(trip) {
     try {
       // Schreibe direkt in Fahrtenbuch-Storage (gleicher localStorage)
       var key = "trip:"+trip.id;
@@ -1349,6 +1355,16 @@ SCKR.regatta.compass = {
     windData: null
   },
 
+  setPropulsion: function(mode) {
+    SCKR.regatta.compass.state.propulsion = mode;
+    SCKR.regatta.compass.render();
+  },
+
+  _openFibel: function() {
+    var b = SCKR.core.boats ? SCKR.core.boats.active() : null;
+    SCKR.regatta.trimm.showFibel(b && b.klasse ? b.klasse : "15er-Jollenkreuzer");
+  },
+
   fetchWind: function() {
     var st = SCKR.regatta.compass.state;
     if(Date.now() - st.lastWindFetch < 600000) return;  // Max alle 10 Min
@@ -1582,76 +1598,72 @@ SCKR.regatta.compass = {
     var roll = SCKR.core.orient.enabled ? SCKR.core.orient.roll : null;
     var twa = SCKR.regatta.compass.twa();
     var trimmHint = SCKR.regatta.compass.getTrimmHint();
-    var b = SCKR.core.boats.active();
-
-    // Trigger wind fetch
+    var b = SCKR.core.boats ? SCKR.core.boats.active() : null;
+    var rec = SCKR.regatta.taktik.recommendation();
+    var adv = SCKR.regatta.taktik.tackAdvantage();
+    var course = SCKR.regatta.chart.state.course;
+    var wd = st.windData;
+    var bft = wd ? SCKR.regatta.compass.msToBft(wd.speed) : null;
+    var wdir = wd ? SCKR.core.fmt.compass(wd.dir) : null;
     if(SCKR.core.gps.granted) SCKR.regatta.compass.fetchWind();
+    var esc = SCKR.core.fmt.esc;
 
-    var html = '<div class="shead"><div><div class="lxs">'+(b ? b.name : "Kein Boot")+'</div><h2>Kompass</h2></div>'
-      + '<button type="button" onclick="SCKR.core.gps.request()" style="padding:5px 10px;border-radius:6px;border:1px solid var(--bdr);background:'+(SCKR.core.gps.granted?"rgba(26,138,80,.2)":"rgba(200,168,75,.1)")+';color:'+(SCKR.core.gps.granted?"#4ecf88":"var(--acc)")+';font-size:11px;cursor:pointer;font-family:var(--fd);font-weight:700">'+(SCKR.core.gps.granted?"GPS AN":"GPS")+'</button>'
+    var html = '<div class="shead"><div><div class="lxs">'+(b?b.name:"Kein Boot")+'</div><h2>Kompass &amp; Taktik</h2></div>'
+      + '<button type="button" onclick="SCKR.core.gps.request()" style="padding:5px 10px;border-radius:6px;border:1px solid var(--bdr);background:'+(SCKR.core.gps.granted?"rgba(26,138,80,.2)":"rgba(200,16,46,.1)")+';color:'+(SCKR.core.gps.granted?"#4ecf88":"var(--acc)")+';font-size:11px;cursor:pointer;font-family:var(--fd);font-weight:700">'+(SCKR.core.gps.granted?"GPS AN":"GPS")+'</button>'
       + '</div>';
 
-    // Big compass
-    html += '<div class="pnl"><div style="padding:14px">'
-      + SCKR.regatta.compass.bigCompassSVG(heading, st.windData ? st.windData.dir : null, twa)
+    html += '<div class="pnl"><div style="padding:14px">' + SCKR.regatta.compass.digitalCompass(heading, wd?wd.dir:null, twa) + '</div></div>';
+
+    var twaCol = twa!==null?(twa>0?"#1AABA0":"#e67e22"):"var(--mut)";
+    html += '<div class="pnl"><div style="display:grid;grid-template-columns:1fr 1fr 1fr">'
+      + '<div style="padding:12px 8px;text-align:center;border-right:1px solid var(--bdr2)"><div style="font-family:var(--fd);font-size:24px;font-weight:900;color:var(--wh);font-variant-numeric:tabular-nums">'+SCKR.core.fmt.speed(speedMs)+'</div><div style="font-family:var(--fd);font-size:9px;color:var(--mut);letter-spacing:.1em;margin-top:3px">km/h</div></div>'
+      + '<div style="padding:12px 8px;text-align:center;border-right:1px solid var(--bdr2)"><div style="font-family:var(--fd);font-size:24px;font-weight:900;color:var(--wh)">'+(bft!==null?bft+' Bft':'-')+'</div><div style="font-family:var(--fd);font-size:9px;color:var(--mut);letter-spacing:.1em;margin-top:3px">'+(wdir||'WIND')+'</div></div>'
+      + '<div style="padding:12px 8px;text-align:center"><div style="font-family:var(--fd);font-size:24px;font-weight:900;color:'+twaCol+';font-variant-numeric:tabular-nums">'+(twa!==null?(twa>0?"+":"")+Math.round(twa)+"°":"-")+'</div><div style="font-family:var(--fd);font-size:9px;color:var(--mut);letter-spacing:.1em;margin-top:3px">TWA</div></div>'
       + '</div></div>';
 
-    // Speed + Wind + TWA grid
-    html += '<div class="pnl"><div class="phd"><span class="phd-t">Werte</span></div>'
-      + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid var(--bdr2)">'
-      +   '<div style="padding:14px;text-align:center;border-right:1px solid var(--bdr2)">'
-      +     '<div style="font-family:var(--fd);font-size:24px;font-weight:900;color:var(--wh);font-variant-numeric:tabular-nums">'+SCKR.core.fmt.speed(speedMs)+'<span style="font-size:11px;color:var(--acc3);margin-left:2px">km/h</span></div>'
-      +     '<div style="font-family:var(--fd);font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--mut);margin-top:3px">SPEED</div>'
-      +   '</div>'
-      +   '<div style="padding:14px;text-align:center;border-right:1px solid var(--bdr2)">'
-      +     '<div style="font-family:var(--fd);font-size:24px;font-weight:900;color:var(--teal);font-variant-numeric:tabular-nums">'+(st.windData ? SCKR.regatta.compass.msToBft(st.windData.speed) : "-")+'<span style="font-size:11px;color:var(--acc3);margin-left:2px">Bft</span></div>'
-      +     '<div style="font-family:var(--fd);font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--mut);margin-top:3px">WIND '+(st.windData ? SCKR.core.fmt.compass(st.windData.dir) : "-")+'</div>'
-      +   '</div>'
-      +   '<div style="padding:14px;text-align:center">'
-      +     '<div style="font-family:var(--fd);font-size:24px;font-weight:900;color:'+(twa===null?"var(--mut)":twa>0?"#1AABA0":"#e67e22")+';font-variant-numeric:tabular-nums">'+(twa===null ? "-" : (twa>0?"+":"")+Math.round(twa))+'<span style="font-size:11px;color:var(--acc3);margin-left:2px">&#176;</span></div>'
-      +     '<div style="font-family:var(--fd);font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--mut);margin-top:3px">TWA '+(twa>0?"Bb":twa<0?"Stb":"")+'</div>'
-      +   '</div>'
-      + '</div></div>';
-
-    // Heel meter
-    if(SCKR.core.orient.enabled) {
-      html += '<div class="pnl"><div class="phd"><span class="phd-t">Kraengung</span></div>'
-        + '<div style="padding:10px 14px">'+SCKR.regatta.compass.heelSVG(roll)+'</div></div>';
-    } else {
-      html += '<div class="pnl"><div style="padding:14px;text-align:center">'
-        + '<button class="btn btn-ghost" type="button" onclick="SCKR.core.orient.request(function(){SCKR.regatta.compass.render();})" style="font-size:13px;padding:11px">KRAENGUNGS-SENSOR AKTIVIEREN</button>'
-        + '<div style="font-size:11px;color:var(--mut);margin-top:8px;line-height:1.5">iPhone fragt Erlaubnis fuer Bewegungs-Sensor</div>'
-        + '</div></div>';
+    if(roll !== null) {
+      var rc = Math.abs(roll)>28?"var(--acc)":Math.abs(roll)>18?"#e67e22":"#4ecf88";
+      html += '<div class="pnl" style="padding:10px 14px;display:flex;align-items:center;gap:10px">'
+        + '<div style="font-family:var(--fd);font-size:9px;font-weight:700;letter-spacing:.1em;color:var(--mut);flex-shrink:0;width:60px">KRAENGUNG</div>'
+        + '<div style="flex:1;height:14px;background:var(--bg3);border-radius:4px;position:relative;overflow:hidden"><div style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:rgba(255,255,255,.1)"></div><div style="position:absolute;left:'+Math.max(5,Math.min(95,(roll+45)/90*100)).toFixed(0)+'%;top:1px;bottom:1px;width:8px;background:'+rc+';transform:translateX(-50%);border-radius:2px"></div></div>'
+        + '<div style="font-family:var(--fd);font-size:14px;font-weight:900;color:'+rc+';flex-shrink:0;min-width:36px;text-align:right">'+Math.round(roll)+'°</div>'
+        + '</div>';
     }
 
-    // Propulsion mode
-    html += '<div class="pnl"><div class="phd"><span class="phd-t">Antrieb</span></div>'
-      + '<div style="display:grid;grid-template-columns:1fr 1fr;padding:10px;gap:8px">'
-      +   '<button type="button" onclick="SCKR.regatta.compass.togglePropulsion(\'Segel\')" style="padding:10px;border-radius:6px;cursor:pointer;font-family:var(--fd);font-size:13px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;background:'+(st.propulsionMode==="Segel"?"rgba(26,171,160,.2)":"rgba(200,168,75,.05)")+';color:'+(st.propulsionMode==="Segel"?"var(--teal)":"var(--mut)")+';border:1px solid '+(st.propulsionMode==="Segel"?"var(--teal)":"var(--bdr2)")+'">UNTER SEGEL</button>'
-      +   '<button type="button" onclick="SCKR.regatta.compass.togglePropulsion(\'Motor\')" style="padding:10px;border-radius:6px;cursor:pointer;font-family:var(--fd);font-size:13px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;background:'+(st.propulsionMode==="Motor"?"rgba(230,126,34,.2)":"rgba(200,168,75,.05)")+';color:'+(st.propulsionMode==="Motor"?"#e67e22":"var(--mut)")+';border:1px solid '+(st.propulsionMode==="Motor"?"#e67e22":"var(--bdr2)")+'">MIT MOTOR</button>'
-      + '</div></div>';
+    var recCol = rec.status==="layline_now"||rec.status==="overstand"?"var(--acc)":rec.status==="layline_near"?"#FFCF40":"#4ecf88";
+    html += '<div class="pnl" style="border-left:4px solid '+recCol+'"><div class="phd"><span class="phd-t">TAKTIK</span></div><div style="padding:12px 16px">'
+      + '<div style="font-family:var(--fd);font-size:16px;font-weight:900;color:'+recCol+';letter-spacing:.04em">'+rec.text.toUpperCase()+'</div>';
+    if(adv) html += '<div style="font-size:12px;color:var(--off);margin-top:4px">'+adv.text+'</div>';
+    if(course.buoys.length > 0 && SCKR.core.gps.currentPos) {
+      var nb = course.buoys[course.currentBuoyIdx]||course.buoys[0];
+      if(nb) {
+        var dist = Math.round(SCKR.core.util.haversine(SCKR.core.gps.currentPos,{lat:nb.lat,lng:nb.lng})*1000);
+        var brng = Math.round(SCKR.core.util.bearing(SCKR.core.gps.currentPos,{lat:nb.lat,lng:nb.lng}));
+        html += '<div style="display:flex;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid var(--bdr2)"><span style="font-family:var(--fd);font-size:11px;color:var(--mut)">'+esc(nb.name)+'</span><span style="font-family:var(--fd);font-size:13px;font-weight:800;color:var(--wh)">'+dist+'m &mdash; '+brng+'°</span></div>';
+      }
+    }
+    html += '</div></div>';
 
-    // Trimm hints
-    if(st.propulsionMode === "Segel") {
-      html += '<div class="pnl"><div class="phd"><span class="phd-t">Trimm-Empfehlung '+(b ? "fuer "+b.boatClass : "")+'</span>'
-        + '<button type="button" onclick="SCKR.regatta.compass.toggleHints()" style="margin-left:auto;padding:3px 8px;border-radius:4px;border:1px solid var(--bdr2);background:rgba(255,255,255,.05);color:var(--mut);font-size:10px;cursor:pointer;font-family:var(--fd);font-weight:700">'+(st.showTrimmHints?"AUS":"EIN")+'</button>'
-        + '</div>';
-      if(st.showTrimmHints) {
-        if(trimmHint) {
-          html += '<div style="padding:12px 14px">'
-            + '<div style="font-family:var(--fd);font-size:13px;font-weight:800;color:var(--wh);margin-bottom:8px;letter-spacing:.04em">'+trimmHint.title+'</div>';
-          for(var i=0;i<trimmHint.tips.length;i++) {
-            html += '<div style="font-size:13px;color:var(--off);padding:5px 0 5px 18px;line-height:1.5;position:relative">'
-              + '<span style="position:absolute;left:0;color:var(--acc)">&#8226;</span>'+SCKR.core.fmt.esc(trimmHint.tips[i])
-              + '</div>';
-          }
-          html += '</div>';
-        } else {
-          html += '<div style="padding:14px;text-align:center;color:var(--mut);font-size:12px">Wind und GPS noetig fuer Empfehlungen</div>';
-        }
+    var boatKlass = b&&b.klasse?b.klasse:"15er-Jollenkreuzer";
+    html += '<div class="pnl"><div class="phd"><span class="phd-t">TRIMM: '+esc(b?b.name:boatKlass)+'</span>'
+      + '<button type="button" onclick="SCKR.regatta.compass._openFibel()" style="font-family:var(--fd);font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;border:1px solid var(--bdr);background:transparent;color:var(--mut);cursor:pointer">FIBEL &#8594;</button>'
+      + '</div>';
+    if(trimmHint&&trimmHint.summary) html += '<div style="padding:9px 14px;font-size:12px;color:var(--acc2);font-weight:600;line-height:1.5;background:rgba(200,16,46,.05);border-bottom:1px solid var(--bdr2)">'+trimmHint.summary+'</div>';
+    if(trimmHint&&trimmHint.hints&&trimmHint.hints.length>0) {
+      html += '<div style="padding:6px 14px">';
+      for(var hi=0;hi<Math.min(trimmHint.hints.length,5);hi++) {
+        var ht=trimmHint.hints[hi], ci=ht.indexOf(":");
+        var lbl=ci>-1&&ci<25?ht.slice(0,ci):null, det=ci>-1&&ci<25?ht.slice(ci+1):ht;
+        html += '<div style="padding:5px 0;border-bottom:1px solid var(--bdr2);font-size:12px">'+(lbl?'<span style="font-family:var(--fd);font-size:11px;font-weight:800;color:var(--acc2)">'+esc(lbl)+':</span> ':'')+' <span style="color:var(--off)">'+esc(det)+'</span></div>';
       }
       html += '</div>';
-    }
+    } else { html += '<div style="padding:12px 14px;font-size:12px;color:var(--mut)">GPS + Wind fuer Trimm-Empfehlung aktiv halten</div>'; }
+    var selAct = st.propulsion==="Segel"?" active":"";
+    var motAct = st.propulsion==="Motor"?" active motor":"";
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px 14px 12px">'
+      + '<button class="prop-btn'+selAct+'" type="button" onclick="SCKR.regatta.compass.setPropulsion(&quot;Segel&quot;)">&#9661; SEGEL</button>'
+      + '<button class="prop-btn'+motAct+'" type="button" onclick="SCKR.regatta.compass.setPropulsion(&quot;Motor&quot;)">&#9655; MOTOR</button>'
+      + '</div></div>';
 
     el.innerHTML = html;
   },
