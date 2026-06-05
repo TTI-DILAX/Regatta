@@ -967,8 +967,8 @@ SCKR.regatta.chart = {
   /* === EDIT BUOY SHEET === */
   editBuoy: function(id) {
     var c = SCKR.regatta.chart.state.course;
-    var b = null;
-    for(var i=0;i<c.buoys.length;i++) if(c.buoys[i].id===id) { b = c.buoys[i]; break; }
+    var b = null, buoyIdx = -1;
+    for(var i=0;i<c.buoys.length;i++) if(c.buoys[i].id===id) { b = c.buoys[i]; buoyIdx = i; break; }
     if(!b) return;
 
     var typeOpts = "";
@@ -987,9 +987,21 @@ SCKR.regatta.chart = {
       +     '<button type="button" id="bu-rb" class="btn-sm" style="flex:1;padding:9px;border-radius:6px;border:1px solid '+(b.rounding==="R"?"var(--acc)":"var(--bdr2)")+';background:'+(b.rounding==="R"?"rgba(200,168,75,.2)":"transparent")+';color:'+(b.rounding==="R"?"var(--acc2)":"var(--mut)")+';font-family:var(--fd);font-weight:700;cursor:pointer" onclick="SCKR.regatta.chart.setRound(\''+id+'\',\'R\')">BACKBORD (R)</button>'
       +   '</div>'
       + '</div>'
-      + '<div style="padding:10px 14px;font-size:11px;color:var(--mut);line-height:1.5">'
-      +   'Position: '+b.lat.toFixed(5)+', '+b.lng.toFixed(5)+'<br>'
-      +   'Tippe auf der Karte und ziehe diese Tonne um sie zu verschieben.'
+      + '<div class="fld"><label class="lbl">Position</label>'
+      +   '<div style="font-size:12px;color:var(--off);font-family:var(--fd);margin:4px 0 8px">'+b.lat.toFixed(5)+', '+b.lng.toFixed(5)+'</div>'
+      +   '<button type="button" class="btn btn-green" onclick="SCKR.regatta.chart.setBuoyToGPS(\''+id+'\')" style="width:100%;font-size:12px;padding:10px;margin-bottom:6px">&#128205; POSITION = MEIN GPS JETZT</button>'
+      +   '<button type="button" class="btn btn-ghost" onclick="SCKR.regatta.chart.repositionOnMap(\''+id+'\')" style="width:100%;font-size:12px;padding:10px;margin-bottom:8px">&#128506; AUF KARTE NEU SETZEN</button>'
+      +   '<div style="display:flex;gap:6px;align-items:center">'
+      +     '<input class="inp" id="bu-lat" placeholder="Lat" value="'+b.lat.toFixed(6)+'" style="flex:1;padding:8px;font-size:12px">'
+      +     '<input class="inp" id="bu-lng" placeholder="Lng" value="'+b.lng.toFixed(6)+'" style="flex:1;padding:8px;font-size:12px">'
+      +     '<button type="button" onclick="SCKR.regatta.chart.setBuoyManual(\''+id+'\')" style="padding:9px 14px;border-radius:6px;border:1px solid var(--bdr);background:rgba(200,168,75,.15);color:var(--acc2);font-family:var(--fd);font-weight:700;cursor:pointer">OK</button>'
+      +   '</div>'
+      + '</div>'
+      + '<div class="fld"><label class="lbl">Reihenfolge (Position '+(buoyIdx+1)+' von '+c.buoys.length+')</label>'
+      +   '<div style="display:flex;gap:8px;margin-top:6px">'
+      +     '<button type="button"'+(buoyIdx<=0?' disabled':'')+' onclick="SCKR.regatta.chart.moveBuoyOrder(\''+id+'\',-1)" style="flex:1;padding:9px;border-radius:6px;border:1px solid var(--bdr2);background:transparent;color:var(--off);font-family:var(--fd);font-weight:700;cursor:pointer;opacity:'+(buoyIdx<=0?'.3':'1')+'">&larr; FRUEHER</button>'
+      +     '<button type="button"'+(buoyIdx>=c.buoys.length-1?' disabled':'')+' onclick="SCKR.regatta.chart.moveBuoyOrder(\''+id+'\',1)" style="flex:1;padding:9px;border-radius:6px;border:1px solid var(--bdr2);background:transparent;color:var(--off);font-family:var(--fd);font-weight:700;cursor:pointer;opacity:'+(buoyIdx>=c.buoys.length-1?'.3':'1')+'">SPAETER &rarr;</button>'
+      +   '</div>'
       + '</div>'
       + '</div>'
       + '<div style="display:flex;gap:8px;margin-top:14px">'
@@ -1010,6 +1022,53 @@ SCKR.regatta.chart = {
     await SCKR.regatta.chart.updateBuoy(id, {name:name, type:type});
     SCKR.core.ui.closeSheet();
     SCKR.core.ui.toast("AKTUALISIERT");
+  },
+
+  /* === POSITION: GPS JETZT === */
+  setBuoyToGPS: async function(id) {
+    if(!SCKR.core.gps.currentPos) { SCKR.core.ui.toast("KEIN GPS - GPS ZUERST AKTIVIEREN"); return; }
+    var p = SCKR.core.gps.currentPos;
+    await SCKR.regatta.chart.updateBuoy(id, {lat:p.lat, lng:p.lng});
+    SCKR.core.ui.toast("POSITION = AKTUELLES GPS");
+    SCKR.regatta.chart.editBuoy(id);
+  },
+
+  /* === POSITION: MANUELL (Lat/Lng) === */
+  setBuoyManual: async function(id) {
+    var latEl = document.getElementById("bu-lat");
+    var lngEl = document.getElementById("bu-lng");
+    if(!latEl || !lngEl) return;
+    var lat = parseFloat(latEl.value), lng = parseFloat(lngEl.value);
+    if(isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      SCKR.core.ui.toast("UNGUELTIGE KOORDINATEN"); return;
+    }
+    await SCKR.regatta.chart.updateBuoy(id, {lat:lat, lng:lng});
+    SCKR.core.ui.toast("POSITION UEBERNOMMEN");
+    SCKR.regatta.chart.editBuoy(id);
+  },
+
+  /* === POSITION: AUF KARTE NEU SETZEN === */
+  repositionOnMap: function(id) {
+    var s = SCKR.regatta.chart.state;
+    s.addMode = "reposition:" + id;
+    SCKR.core.ui.closeSheet();
+    SCKR.core.ui.toast("TIPPE AUF KARTE FUER NEUE POSITION");
+    if(s.map) s.map.getContainer().style.cursor = "crosshair";
+  },
+
+  /* === REIHENFOLGE AENDERN === */
+  moveBuoyOrder: async function(id, dir) {
+    var c = SCKR.regatta.chart.state.course;
+    var idx = -1;
+    for(var i=0;i<c.buoys.length;i++) if(c.buoys[i].id===id){idx=i;break;}
+    if(idx === -1) return;
+    var ni = idx + dir;
+    if(ni < 0 || ni >= c.buoys.length) return;
+    var tmp = c.buoys[idx]; c.buoys[idx] = c.buoys[ni]; c.buoys[ni] = tmp;
+    for(var j=0;j<c.buoys.length;j++) c.buoys[j].order = j;
+    await SCKR.regatta.chart.saveCourse();
+    SCKR.regatta.chart.renderMap();
+    SCKR.regatta.chart.editBuoy(id);
   },
 
   /* === MAP RENDERING === */
@@ -1312,6 +1371,12 @@ SCKR.regatta.chart = {
       if(s.addMode === "buoy") {
         SCKR.regatta.chart.addBuoy(e.latlng.lat, e.latlng.lng);
         SCKR.regatta.chart.toggleAddMode();
+      } else if(s.addMode && s.addMode.indexOf("reposition:") === 0) {
+        var bid = s.addMode.slice(11);
+        SCKR.regatta.chart.updateBuoy(bid, {lat:e.latlng.lat, lng:e.latlng.lng});
+        s.addMode = null;
+        if(s.map) s.map.getContainer().style.cursor = "";
+        SCKR.core.ui.toast("TONNE NEU PLATZIERT");
       }
     });
 
@@ -1466,9 +1531,14 @@ SCKR.regatta._magnetic.init();
     }
 
     if(newHeading !== null && !isNaN(newHeading)) {
-      SCKR.regatta._smooth.smoothedHeading = SCKR.core.util.emaHeading(
-        SCKR.regatta._smooth.smoothedHeading, newHeading, 0.3
-      );
+      // Dead-zone: Änderungen unter 2° ignorieren (kein Rauschen)
+      var prev = SCKR.regatta._smooth.smoothedHeading;
+      var diff = Math.abs(((newHeading - prev + 540) % 360) - 180);
+      if(diff > 2 || smR.avg > 0.5) {
+        SCKR.regatta._smooth.smoothedHeading = SCKR.core.util.emaHeading(
+          prev, newHeading, smR.avg > 1 ? 0.25 : 0.15
+        );
+      }
     }
   }, 500);
 })();
@@ -1750,11 +1820,32 @@ SCKR.regatta.compass = {
       + '</div></div>';
 
     if(roll !== null) {
-      var rc = Math.abs(roll)>28?"var(--acc)":Math.abs(roll)>18?"#e67e22":"#4ecf88";
-      html += '<div class="pnl" style="padding:10px 14px;display:flex;align-items:center;gap:10px">'
-        + '<div style="font-family:var(--fd);font-size:9px;font-weight:700;letter-spacing:.1em;color:var(--mut);flex-shrink:0;width:60px">KRAENGUNG</div>'
-        + '<div style="flex:1;height:14px;background:var(--bg3);border-radius:4px;position:relative;overflow:hidden"><div style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:rgba(255,255,255,.1)"></div><div style="position:absolute;left:'+Math.max(5,Math.min(95,(roll+45)/90*100)).toFixed(0)+'%;top:1px;bottom:1px;width:8px;background:'+rc+';transform:translateX(-50%);border-radius:2px"></div></div>'
-        + '<div style="font-family:var(--fd);font-size:14px;font-weight:900;color:'+rc+';flex-shrink:0;min-width:36px;text-align:right">'+Math.round(roll)+'°</div>'
+      // Smooth roll via EMA
+      SCKR.regatta._smooth.roll = SCKR.regatta._smooth.roll !== undefined
+        ? SCKR.regatta._smooth.roll * 0.7 + roll * 0.3 : roll;
+      var sr = SCKR.regatta._smooth.roll;
+      var absR = Math.abs(sr);
+      var rc = absR>20?"var(--acc)":absR>10?"#e67e22":"#4ecf88";
+      var rLabel = sr > 1 ? "LEE" : sr < -1 ? "LUV" : "AUFRECHT";
+      var rIcon = sr > 1 ? "&#9661;" : sr < -1 ? "&#9651;" : "&#9670;";
+      // Bar: Mitte=0°, max ±30°
+      var barPct = Math.max(5,Math.min(95, 50 + (sr/30)*45));
+      var barW = Math.max(6,Math.min(40,absR*1.5));
+      html += '<div class="pnl" style="padding:10px 14px">'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+        + '<div style="font-family:var(--fd);font-size:9px;font-weight:700;letter-spacing:.1em;color:var(--mut)">KRAENGUNG</div>'
+        + '<div style="font-family:var(--fd);font-size:22px;font-weight:900;color:'+rc+';margin-left:auto">'+rIcon+' '+absR.toFixed(1)+'°</div>'
+        + '<div style="font-family:var(--fd);font-size:11px;font-weight:800;color:'+rc+';min-width:52px">'+rLabel+'</div>'
+        + '</div>'
+        + '<div style="height:20px;background:var(--bg3);border-radius:6px;position:relative;overflow:hidden">'
+        + '<div style="position:absolute;left:25%;top:3px;bottom:3px;width:1px;background:rgba(255,255,255,.15)"></div>'
+        + '<div style="position:absolute;left:50%;top:0;bottom:0;width:2px;background:rgba(255,255,255,.25);transform:translateX(-50%)"></div>'
+        + '<div style="position:absolute;left:75%;top:3px;bottom:3px;width:1px;background:rgba(255,255,255,.15)"></div>'
+        + '<div style="position:absolute;left:4px;top:50%;transform:translateY(-50%);font-size:7px;color:rgba(255,255,255,.3);font-family:var(--fd);font-weight:700">LUV</div>'
+        + '<div style="position:absolute;right:4px;top:50%;transform:translateY(-50%);font-size:7px;color:rgba(255,255,255,.3);font-family:var(--fd);font-weight:700">LEE</div>'
+        + '<div style="position:absolute;left:'+barPct.toFixed(1)+'%;top:2px;bottom:2px;width:'+barW.toFixed(0)+'px;background:'+rc+';transform:translateX(-50%);border-radius:3px;transition:left .25s ease,width .25s ease,background .2s"></div>'
+        + '</div>'
+        + (absR>25?'<div style="margin-top:5px;font-family:var(--fd);font-size:10px;font-weight:800;color:var(--acc);letter-spacing:.06em">&#9888; ZU VIEL KRAENGUNG — AUFSCHOTEN!</div>':'')
         + '</div>';
     }
 
