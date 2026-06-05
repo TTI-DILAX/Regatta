@@ -973,13 +973,13 @@ SCKR.regatta.chart = {
     }
 
     // Marken aus Bahndiagramm LJM 2026 (Offsets in m: Ost, Nord)
-    var b1  = mk("luv",  "Luv",    "1",  1,   60, 550);
-    var b3  = mk("lee",  "Tonne 3","3",  3,   50, 230);
-    var b2  = mk("raum", "Wing",   "2",  2, -320, 480);
-    var b4  = mk("lee",  "Lee-Gate R","4", 4, -260, 90);
-    var b5  = mk("lee",  "Lee-Gate L","5", 5, -340, 90);
-    var fs  = mk("ziel", "Finish S","FS", 6, -150, 120);
-    var fp  = mk("ziel", "Finish P","FP", 7, -185, 75);
+    var b1  = mk("luv",  "1",  "1",  1,   60, 550);   // Luv (oben)
+    var b3  = mk("lee",  "3",  "3",  3,   50, 230);   // Bahnmarke 3
+    var b2  = mk("raum", "2",  "2",  2, -320, 480);   // Wing/Raum
+    var b4  = mk("lee",  "4",  "4",  4, -260, 90);    // Lee-Gate (rechts)
+    var b5  = mk("lee",  "5",  "5",  5, -340, 90);    // Lee-Gate (links)
+    var fs  = mk("ziel", "FS", "FS", 6, -150, 120);   // Finish Steuerbord
+    var fp  = mk("ziel", "FP", "FP", 7, -185, 75);    // Finish Pin
     c.buoys = [b1, b2, b3, b4, b5, fs, fp];
     for(var i=0;i<c.buoys.length;i++) c.buoys[i].order = i;
 
@@ -1480,12 +1480,16 @@ SCKR.regatta.chart = {
     if(c.startLine.stb) {
       s.startStbMarker = L.circleMarker([c.startLine.stb.lat, c.startLine.stb.lng], {
         radius: 9, color: "#fff", fillColor: "#27AE60", fillOpacity: 1, weight: 2
-      }).bindPopup("Startschiff (Stb)").addTo(s.map);
+      }).bindPopup("SS – Startschiff (Stb)").addTo(s.map);
+      var ssLbl = L.divIcon({className:'', html:'<div style="background:#27AE60;color:#fff;font-family:Barlow Condensed;font-weight:800;font-size:11px;padding:1px 6px;border-radius:7px;border:1px solid #03101e;transform:translate(12px,-8px)">SS</div>', iconSize:[0,0], iconAnchor:[0,0]});
+      s.buoyMarkers["_ss_lbl"] = L.marker([c.startLine.stb.lat, c.startLine.stb.lng], {icon:ssLbl, interactive:false}).addTo(s.map);
     }
     if(c.startLine.pin) {
       s.startPinMarker = L.circleMarker([c.startLine.pin.lat, c.startLine.pin.lng], {
         radius: 9, color: "#fff", fillColor: "#F39C12", fillOpacity: 1, weight: 2
-      }).bindPopup("Pin-Ende (Bb)").addTo(s.map);
+      }).bindPopup("SP – Pin-Ende (Bb)").addTo(s.map);
+      var spLbl = L.divIcon({className:'', html:'<div style="background:#F39C12;color:#03101e;font-family:Barlow Condensed;font-weight:800;font-size:11px;padding:1px 6px;border-radius:7px;border:1px solid #03101e;transform:translate(12px,-8px)">SP</div>', iconSize:[0,0], iconAnchor:[0,0]});
+      s.buoyMarkers["_sp_lbl"] = L.marker([c.startLine.pin.lat, c.startLine.pin.lng], {icon:spLbl, interactive:false}).addTo(s.map);
     }
     if(c.startLine.stb && c.startLine.pin) {
       s.startLine = L.polyline([
