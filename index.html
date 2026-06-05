@@ -900,6 +900,9 @@ SCKR.regatta.chart = {
       id: SCKR.core.util.uuid(),
       type: type,
       name: SCKR.regatta.chart.buoyTypes[type].label + " " + (c.buoys.filter(function(b){return b.type===type;}).length + 1),
+      code: "",
+      num: c.buoys.length + 1,
+      windDir: null,
       lat: lat, lng: lng,
       rounding: "S",   // S=Steuerbord (Standard), R=Backbord
       order: c.buoys.length
@@ -970,6 +973,10 @@ SCKR.regatta.chart = {
     var b = null, buoyIdx = -1;
     for(var i=0;i<c.buoys.length;i++) if(c.buoys[i].id===id) { b = c.buoys[i]; buoyIdx = i; break; }
     if(!b) return;
+    var hav = SCKR.core.util.haversine;
+    var distPrev = buoyIdx>0 ? Math.round(hav({lat:c.buoys[buoyIdx-1].lat,lng:c.buoys[buoyIdx-1].lng},{lat:b.lat,lng:b.lng})*1000) : null;
+    var distNext = buoyIdx<c.buoys.length-1 ? Math.round(hav({lat:b.lat,lng:b.lng},{lat:c.buoys[buoyIdx+1].lat,lng:c.buoys[buoyIdx+1].lng})*1000) : null;
+    var globWind = c.windDir!=null ? Math.round(c.windDir)+'\u00b0' : 'nicht gesetzt';
 
     var typeOpts = "";
     for(var t in SCKR.regatta.chart.buoyTypes) {
@@ -981,6 +988,10 @@ SCKR.regatta.chart = {
       + '<div class="pnl">'
       + '<div class="fld"><label class="lbl">Name</label><input class="inp" id="bu-name" value="'+SCKR.core.fmt.esc(b.name)+'"></div>'
       + '<div class="fld"><label class="lbl">Tonnen-Typ</label><select class="inp" id="bu-type">'+typeOpts+'</select></div>'
+      + '<div style="display:flex;gap:8px">'
+      +   '<div class="fld" style="flex:1"><label class="lbl">Nummer</label><input class="inp" id="bu-num" value="'+(b.num!=null?b.num:(buoyIdx+1))+'" style="padding:8px;font-size:13px"></div>'
+      +   '<div class="fld" style="flex:1"><label class="lbl">Code (Marker)</label><input class="inp" id="bu-code" placeholder="z.B. L1" value="'+SCKR.core.fmt.esc(b.code||"")+'" style="padding:8px;font-size:13px"></div>'
+      + '</div>'
       + '<div class="fld"><label class="lbl">Rundungsrichtung</label>'
       +   '<div style="display:flex;gap:8px;margin-top:6px">'
       +     '<button type="button" id="bu-rs" class="btn-sm" style="flex:1;padding:9px;border-radius:6px;border:1px solid '+(b.rounding==="S"?"var(--acc)":"var(--bdr2)")+';background:'+(b.rounding==="S"?"rgba(200,168,75,.2)":"transparent")+';color:'+(b.rounding==="S"?"var(--acc2)":"var(--mut)")+';font-family:var(--fd);font-weight:700;cursor:pointer" onclick="SCKR.regatta.chart.setRound(\''+id+'\',\'S\')">STEUERBORD (S)</button>'
@@ -1003,6 +1014,16 @@ SCKR.regatta.chart = {
       +     '<button type="button"'+(buoyIdx>=c.buoys.length-1?' disabled':'')+' onclick="SCKR.regatta.chart.moveBuoyOrder(\''+id+'\',1)" style="flex:1;padding:9px;border-radius:6px;border:1px solid var(--bdr2);background:transparent;color:var(--off);font-family:var(--fd);font-weight:700;cursor:pointer;opacity:'+(buoyIdx>=c.buoys.length-1?'.3':'1')+'">SPAETER &rarr;</button>'
       +   '</div>'
       + '</div>'
+      + '<div class="fld"><label class="lbl">Lokaler Wind (Grad, leer = global)</label>'
+      +   '<input class="inp" id="bu-wind" type="number" min="0" max="360" placeholder="global: '+globWind+'" value="'+(b.windDir!=null?b.windDir:'')+'" style="padding:8px;font-size:13px">'
+      + '</div>'
+      + '<div class="fld"><label class="lbl">Abst\u00e4nde</label>'
+      +   '<div style="font-size:12px;color:var(--off);font-family:var(--fd);line-height:1.6">'
+      +   (distPrev!=null?'Zur vorherigen: <b>'+distPrev+' m</b><br>':'')
+      +   (distNext!=null?'Zur n\u00e4chsten: <b>'+distNext+' m</b>':'')
+      +   (distPrev==null&&distNext==null?'Einzige Tonne':'')
+      +   '</div>'
+      + '</div>'
       + '</div>'
       + '<div style="display:flex;gap:8px;margin-top:14px">'
       +   '<button class="btn btn-gold" type="button" onclick="SCKR.regatta.chart.saveBuoy(\''+id+'\')" style="flex:1">SPEICHERN</button>'
@@ -1019,9 +1040,22 @@ SCKR.regatta.chart = {
   saveBuoy: async function(id) {
     var name = (document.getElementById("bu-name")||{}).value;
     var type = (document.getElementById("bu-type")||{}).value;
-    await SCKR.regatta.chart.updateBuoy(id, {name:name, type:type});
+    var code = (document.getElementById("bu-code")||{}).value || "";
+    var num  = (document.getElementById("bu-num")||{}).value || "";
+    var windRaw = (document.getElementById("bu-wind")||{}).value;
+    var windVal = (windRaw===""||windRaw==null) ? null : parseFloat(windRaw);
+    if(windVal!=null && (isNaN(windVal)||windVal<0||windVal>360)) {
+      SCKR.core.ui.toast("WIND 0-360 GRAD"); return;
+    }
+    await SCKR.regatta.chart.updateBuoy(id, {name:name, type:type, code:code, num:num, windDir:windVal});
     SCKR.core.ui.closeSheet();
     SCKR.core.ui.toast("AKTUALISIERT");
+  },
+
+  /* === EFFEKTIVER WIND (lokal oder global) === */
+  effectiveWind: function(buoy) {
+    if(buoy && buoy.windDir!=null && !isNaN(buoy.windDir)) return buoy.windDir;
+    return SCKR.regatta.chart.state.course.windDir;
   },
 
   /* === POSITION: GPS JETZT === */
@@ -1096,7 +1130,7 @@ SCKR.regatta.chart = {
       var sz = isCurrent ? 28 : 20;
       var buoyIcon = L.divIcon({
         className: '',
-        html: '<div style="width:'+sz+'px;height:'+sz+'px;background:'+type.color+';border-radius:50%;border:'+(isCurrent?'3px solid #fff':'2px solid #03101e')+';cursor:grab;display:flex;align-items:center;justify-content:center;font-family:Barlow Condensed;font-size:9px;font-weight:800;color:#fff;'+(isCurrent?'box-shadow:0 0 14px '+type.color:'')+'">'+(i+1)+'</div>',
+        html: '<div style="width:'+sz+'px;height:'+sz+'px;background:'+type.color+';border-radius:50%;border:'+(isCurrent?'3px solid #fff':'2px solid #03101e')+';cursor:grab;display:flex;align-items:center;justify-content:center;font-family:Barlow Condensed;font-size:9px;font-weight:800;color:#fff;'+(isCurrent?'box-shadow:0 0 14px '+type.color:'')+'">'+(b.code||b.num||(i+1))+'</div>',
         iconSize:[sz,sz], iconAnchor:[sz/2,sz/2]
       });
       var marker = L.marker([b.lat, b.lng], {icon:buoyIcon, draggable:true});
@@ -1113,7 +1147,7 @@ SCKR.regatta.chart = {
       // Order number badge
       var label = L.divIcon({
         className: 'buoy-label',
-        html: '<div style="background:'+type.color+';color:#fff;font-family:Barlow Condensed;font-weight:800;font-size:11px;padding:2px 6px;border-radius:8px;border:1px solid #03101e;white-space:nowrap;transform:translate(12px,-22px);box-shadow:0 2px 4px rgba(0,0,0,.5)">'+(i+1)+' '+type.label.charAt(0)+' / '+b.rounding+'</div>',
+        html: '<div style="background:'+type.color+';color:#fff;font-family:Barlow Condensed;font-weight:800;font-size:11px;padding:2px 6px;border-radius:8px;border:1px solid #03101e;white-space:nowrap;transform:translate(12px,-22px);box-shadow:0 2px 4px rgba(0,0,0,.5)">'+(b.code||b.num||(i+1))+' '+type.label.charAt(0)+' / '+b.rounding+'</div>',
         iconSize: [60, 16],
         iconAnchor: [0, 0]
       });
@@ -1127,6 +1161,31 @@ SCKR.regatta.chart = {
       s.routeLine = L.polyline(coords, {
         color: "#C8A84B", weight: 2, opacity: 0.6, dashArray: "6,8"
       }).addTo(s.map);
+      // Abstands-Labels an Segment-Mitten
+      for(var k=0;k<c.buoys.length-1;k++) {
+        var b1=c.buoys[k], b2=c.buoys[k+1];
+        var dm=Math.round(SCKR.core.util.haversine({lat:b1.lat,lng:b1.lng},{lat:b2.lat,lng:b2.lng})*1000);
+        var distIcon=L.divIcon({className:'',html:'<div style="background:rgba(3,16,30,.85);color:#C8A84B;font-family:Barlow Condensed;font-size:10px;font-weight:700;padding:1px 5px;border-radius:6px;white-space:nowrap;border:1px solid rgba(200,168,75,.3)">'+dm+'m</div>',iconSize:[44,14],iconAnchor:[22,7]});
+        var distMarker=L.marker([(b1.lat+b2.lat)/2,(b1.lng+b2.lng)/2],{icon:distIcon,interactive:false}).addTo(s.map);
+        s.buoyMarkers["dist_"+k]=distMarker;
+      }
+    }
+    // Windpfeile an jeder Tonne (lokal oder global)
+    for(var wi=0;wi<c.buoys.length;wi++) {
+      var wb=c.buoys[wi];
+      var ew=SCKR.regatta.chart.effectiveWind(wb);
+      if(ew==null||isNaN(ew)) continue;
+      var isLocalWind=(wb.windDir!=null&&!isNaN(wb.windDir));
+      var wc=isLocalWind?"#1AABA0":"#8C97A0";
+      var windIcon=L.divIcon({className:'',
+        html:'<div style="transform:rotate('+ew+'deg);transform-origin:10px 40px">'
+          +'<svg width="20" height="44" viewBox="0 0 20 44">'
+          +'<line x1="10" y1="4" x2="10" y2="32" stroke="'+wc+'" stroke-width="2.5"/>'
+          +'<path d="M10 40 L4 30 L16 30 Z" fill="'+wc+'"/>'
+          +'</svg></div>',
+        iconSize:[20,44], iconAnchor:[10,40]});
+      var windMarker=L.marker([wb.lat,wb.lng],{icon:windIcon,interactive:false}).addTo(s.map);
+      s.buoyMarkers[wb.id+"_wind"]=windMarker;
     }
 
     // Start line
@@ -1936,18 +1995,19 @@ SCKR.regatta.taktik = {
     var c = SCKR.regatta.chart.state.course;
     var pos = SCKR.core.gps.currentPos;
     if(!pos) return { status: "no_gps", text: "GPS noch nicht aktiv" };
-    if(!c.windDir) return { status: "no_wind", text: "Wind-Richtung in Bahn-Editor eingeben" };
     if(c.buoys.length === 0) return { status: "no_course", text: "Noch keine Tonnen gesetzt" };
 
     var current = c.buoys[c.currentBuoyIdx];
     if(!current) return { status: "no_target", text: "Keine aktuelle Tonne" };
+
+    var windOrigin = SCKR.regatta.chart.effectiveWind(current);
+    if(windOrigin == null) return { status: "no_wind", text: "Wind-Richtung eingeben (global oder pro Tonne)" };
 
     var dist = SCKR.core.util.haversine(pos, {lat:current.lat,lng:current.lng}) * 1000;
     var bearing = SCKR.core.util.bearing(pos, {lat:current.lat,lng:current.lng});
 
     // Bestimme aktuellen Bug aus Heading vs Wind
     var heading = SCKR.core.gps.currentHeading;
-    var windOrigin = c.windDir;
     var twa = heading - windOrigin;
     while(twa > 180) twa -= 360;
     while(twa < -180) twa += 360;
@@ -1984,12 +2044,14 @@ SCKR.regatta.taktik = {
   tackAdvantage: function() {
     var c = SCKR.regatta.chart.state.course;
     var pos = SCKR.core.gps.currentPos;
-    if(!pos || !c.windDir || c.buoys.length===0) return null;
+    if(!pos || c.buoys.length===0) return null;
     var current = c.buoys[c.currentBuoyIdx];
     if(!current) return null;
+    var ew = SCKR.regatta.chart.effectiveWind(current);
+    if(ew == null) return null;
 
     var bearing = SCKR.core.util.bearing(pos, {lat:current.lat,lng:current.lng});
-    var rel = bearing - c.windDir;
+    var rel = bearing - ew;
     while(rel > 180) rel -= 360;
     while(rel < -180) rel += 360;
 
