@@ -1170,6 +1170,91 @@ SCKR.regatta.chart = {
     SCKR.core.ui.toast(next ? "GELEGT — NÄCHSTES ZIEL" : "ALLE TONNEN GELEGT");
   },
 
+  /* === KURS DREHEN (um Schwerpunkt, Wind mitdrehen) === */
+  rotateCourse: async function(deg) {
+    var c = SCKR.regatta.chart.state.course;
+    var all = [];
+    c.buoys.forEach(function(b){ all.push({lat:b.lat,lng:b.lng}); });
+    if(c.startLine && c.startLine.stb) all.push(c.startLine.stb);
+    if(c.startLine && c.startLine.pin) all.push(c.startLine.pin);
+    if(all.length === 0) { SCKR.core.ui.toast("KEIN KURS GELADEN"); return; }
+    var clat=0, clng=0;
+    all.forEach(function(p){ clat+=p.lat; clng+=p.lng; });
+    clat/=all.length; clng/=all.length;
+    var mLat=111320, mLng=111320*Math.cos(clat*Math.PI/180);
+    var th=deg*Math.PI/180, cT=Math.cos(th), sT=Math.sin(th);
+    function rot(p){
+      var E=(p.lng-clng)*mLng, N=(p.lat-clat)*mLat;
+      var E2=E*cT+N*sT, N2=-E*sT+N*cT;
+      p.lat=clat+N2/mLat; p.lng=clng+E2/mLng;
+    }
+    c.buoys.forEach(function(b){ rot(b); });
+    if(c.startLine && c.startLine.stb) rot(c.startLine.stb);
+    if(c.startLine && c.startLine.pin) rot(c.startLine.pin);
+    if(c.windDir!=null) c.windDir=(c.windDir+deg+360)%360;
+    c.buoys.forEach(function(b){ if(b.windDir!=null) b.windDir=(b.windDir+deg+360)%360; });
+    await SCKR.regatta.chart.saveCourse();
+    SCKR.regatta.chart.renderMap();
+    if(SCKR.regatta.chart.render) SCKR.regatta.chart.render();
+    SCKR.core.ui.toast("KURS GEDREHT "+(deg>0?"+":"")+deg+"\u00b0"+(c.windDir!=null?" (Wind "+Math.round(c.windDir)+"\u00b0)":""));
+  },
+
+  rotateCoursePrompt: function() {
+    var v = prompt("Kurs drehen um wie viel Grad?\n(positiv = im Uhrzeigersinn, negativ = gegen)");
+    if(v===null || v==="") return;
+    var d = parseFloat(v);
+    if(isNaN(d)) { SCKR.core.ui.toast("UNGUELTIGE GRADZAHL"); return; }
+    SCKR.regatta.chart.rotateCourse(d);
+  },
+
+  /* === KURSÜBERSICHT (Schenkel + Längen + Peilung) === */
+  showCourseOverview: function() {
+    var c = SCKR.regatta.chart.state.course;
+    if(!c.buoys.length) { SCKR.core.ui.toast("KEIN KURS GELADEN"); return; }
+    var byId={}; c.buoys.forEach(function(b){ byId[b.id]=b; });
+    var hav=SCKR.core.util.haversine, brg=SCKR.core.util.bearing;
+    function mid(a,b){ return {lat:(a.lat+b.lat)/2, lng:(a.lng+b.lng)/2}; }
+    var startC=(c.startLine&&c.startLine.stb&&c.startLine.pin)?mid(c.startLine.stb,c.startLine.pin):null;
+    var fs=null,fp=null; c.buoys.forEach(function(b){ if(b.code==="FS")fs=b; if(b.code==="FP")fp=b; });
+    var finishC=(fs&&fp)?mid(fs,fp):null;
+
+    function loopTable(title, color, ids) {
+      if(!ids||ids.length<1) return '';
+      var seq=[];
+      if(startC) seq.push({n:"Start", lat:startC.lat, lng:startC.lng});
+      ids.forEach(function(id){ var b=byId[id]; if(b) seq.push({n:(b.code||b.num||"?"), lat:b.lat, lng:b.lng}); });
+      if(finishC) seq.push({n:"Finish", lat:finishC.lat, lng:finishC.lng});
+      var rows='', total=0;
+      for(var i=0;i<seq.length-1;i++){
+        var a=seq[i], b=seq[i+1];
+        var d=hav({lat:a.lat,lng:a.lng},{lat:b.lat,lng:b.lng})*1000;
+        var bb=brg({lat:a.lat,lng:a.lng},{lat:b.lat,lng:b.lng});
+        total+=d;
+        rows+='<tr style="border-bottom:1px solid var(--bdr)">'
+          +'<td style="padding:5px 4px;font-family:var(--fd);font-weight:700;color:#fff">'+a.n+' &rarr; '+b.n+'</td>'
+          +'<td style="padding:5px 4px;text-align:right;font-family:var(--fd);color:'+color+'">'+Math.round(d)+' m</td>'
+          +'<td style="padding:5px 4px;text-align:right;font-family:var(--fd);color:var(--off)">'+Math.round(bb)+'\u00b0</td>'
+          +'</tr>';
+      }
+      return '<div style="margin-bottom:14px">'
+        +'<div style="font-family:var(--fd);font-weight:800;font-size:13px;color:'+color+';margin-bottom:4px;letter-spacing:1px">'+title+'</div>'
+        +'<table style="width:100%;border-collapse:collapse;font-size:12px">'
+        +'<tr style="border-bottom:1px solid var(--bdr2)"><th style="text-align:left;padding:3px 4px;font-size:10px;color:var(--mut)">SCHENKEL</th><th style="text-align:right;padding:3px 4px;font-size:10px;color:var(--mut)">DISTANZ</th><th style="text-align:right;padding:3px 4px;font-size:10px;color:var(--mut)">PEILUNG</th></tr>'
+        +rows
+        +'<tr><td style="padding:6px 4px;font-family:var(--fd);font-weight:800;color:#fff">GESAMT</td><td style="padding:6px 4px;text-align:right;font-family:var(--fd);font-weight:800;color:'+color+'">'+(total>=1000?(total/1000).toFixed(2)+' km':Math.round(total)+' m')+'</td><td></td></tr>'
+        +'</table></div>';
+    }
+
+    var html = '<div class="shead"><h2>Kurs\u00fcbersicht</h2></div>'
+      + '<div style="padding:4px 2px 14px">'
+      + (c.windDir!=null ? '<div style="font-size:12px;color:var(--off);font-family:var(--fd);margin-bottom:10px">Wind: <b style="color:var(--acc2)">'+Math.round(c.windDir)+'\u00b0</b> &middot; '+c.buoys.length+' Tonnen</div>' : '')
+      + (c.loops && c.loops.outer && c.loops.outer.length>1 ? loopTable("OUTER LOOP", "#C8A84B", c.loops.outer) : '')
+      + (c.loops && c.loops.inner && c.loops.inner.length>1 ? loopTable("INNER LOOP", "#1AABA0", c.loops.inner) : '')
+      + (!(c.loops && ((c.loops.outer&&c.loops.outer.length>1)||(c.loops.inner&&c.loops.inner.length>1))) ? loopTable("KURS", "#C8A84B", c.buoys.map(function(b){return b.id;})) : '')
+      + '</div>';
+    SCKR.core.ui.openSheet(html);
+  },
+
   /* === AKTIVEN LOOP UMSCHALTEN === */
   setActiveLoop: async function(loop) {
     var c = SCKR.regatta.chart.state.course;
@@ -1438,6 +1523,21 @@ SCKR.regatta.chart = {
           opacity: c.activeLoop==="inner"?0.95:0.45, dashArray: c.activeLoop==="inner"?null:"4,6"
         }).addTo(s.map);
       }
+      // Abstands-Labels entlang des aktiven Loops (oder Outer als Default)
+      var actIds = (c.activeLoop==="inner" ? c.loops.inner : c.loops.outer) || c.loops.outer || c.loops.inner;
+      if(actIds && actIds.length>1) {
+        var seen = {};
+        for(var dk=0; dk<actIds.length-1; dk++) {
+          var bb1=buoyById[actIds[dk]], bb2=buoyById[actIds[dk+1]];
+          if(!bb1||!bb2) continue;
+          var mlat=(bb1.lat+bb2.lat)/2, mlng=(bb1.lng+bb2.lng)/2;
+          var key=mlat.toFixed(5)+","+mlng.toFixed(5);
+          if(seen[key]) continue; seen[key]=1;
+          var dmL=Math.round(SCKR.core.util.haversine({lat:bb1.lat,lng:bb1.lng},{lat:bb2.lat,lng:bb2.lng})*1000);
+          var di=L.divIcon({className:'',html:'<div style="background:rgba(3,16,30,.85);color:#C8A84B;font-family:Barlow Condensed;font-size:10px;font-weight:700;padding:1px 5px;border-radius:6px;white-space:nowrap;border:1px solid rgba(200,168,75,.3)">'+dmL+'m</div>',iconSize:[44,14],iconAnchor:[22,7]});
+          s.buoyMarkers["dist_loop_"+dk]=L.marker([mlat,mlng],{icon:di,interactive:false}).addTo(s.map);
+        }
+      }
     } else if(c.buoys.length >= 2) {
       var coords = c.buoys.map(function(b){ return [b.lat, b.lng]; });
       s.routeLine = L.polyline(coords, {
@@ -1664,6 +1764,19 @@ SCKR.regatta.chart = {
       +       '<button type="button" onclick="SCKR.regatta.chart.setActiveLoop(\'inner\')" style="flex:1;padding:10px;border-radius:8px;font-family:var(--fd);font-weight:800;font-size:12px;cursor:pointer;border:2px solid #1AABA0;background:'+(c.activeLoop==="inner"?"#1AABA0":"transparent")+';color:'+(c.activeLoop==="inner"?"#03101e":"#1AABA0")+'">INNER LOOP</button>'
       +     '</div>'
       +     '<div style="font-size:10px;color:var(--mut);margin-top:6px;text-align:center">Outer = gold, Inner = t&uuml;rkis. Tippen = aktiv schalten.</div>'
+      +     '<div style="border-top:1px solid var(--bdr);margin-top:10px;padding-top:8px">'
+      +       '<div style="font-size:10px;color:var(--mut);font-family:var(--fd);margin-bottom:6px;letter-spacing:1px">KURS DREHEN (Wind dreht mit)</div>'
+      +       '<div style="display:flex;gap:5px;margin-bottom:6px">'
+      +         '<button type="button" onclick="SCKR.regatta.chart.rotateCourse(-10)" style="flex:1;padding:9px;border-radius:6px;border:1px solid var(--bdr2);background:transparent;color:var(--off);font-family:var(--fd);font-weight:700;font-size:12px;cursor:pointer">&#8634; -10&deg;</button>'
+      +         '<button type="button" onclick="SCKR.regatta.chart.rotateCourse(-5)" style="flex:1;padding:9px;border-radius:6px;border:1px solid var(--bdr2);background:transparent;color:var(--off);font-family:var(--fd);font-weight:700;font-size:12px;cursor:pointer">&#8634; -5&deg;</button>'
+      +         '<button type="button" onclick="SCKR.regatta.chart.rotateCourse(5)" style="flex:1;padding:9px;border-radius:6px;border:1px solid var(--bdr2);background:transparent;color:var(--off);font-family:var(--fd);font-weight:700;font-size:12px;cursor:pointer">+5&deg; &#8635;</button>'
+      +         '<button type="button" onclick="SCKR.regatta.chart.rotateCourse(10)" style="flex:1;padding:9px;border-radius:6px;border:1px solid var(--bdr2);background:transparent;color:var(--off);font-family:var(--fd);font-weight:700;font-size:12px;cursor:pointer">+10&deg; &#8635;</button>'
+      +       '</div>'
+      +       '<div style="display:flex;gap:5px">'
+      +         '<button type="button" onclick="SCKR.regatta.chart.rotateCoursePrompt()" style="flex:1;padding:9px;border-radius:6px;border:1px solid var(--bdr2);background:transparent;color:var(--off);font-family:var(--fd);font-weight:700;font-size:12px;cursor:pointer">&#8635; GRAD EINGEBEN</button>'
+      +         '<button type="button" onclick="SCKR.regatta.chart.showCourseOverview()" style="flex:1;padding:9px;border-radius:6px;border:1px solid var(--acc2);background:rgba(200,168,75,.12);color:var(--acc2);font-family:var(--fd);font-weight:700;font-size:12px;cursor:pointer">&#9776; KURS&Uuml;BERSICHT</button>'
+      +       '</div>'
+      +     '</div>'
       +   '</div>'
       + '</div>'
       + '<div class="pnl"><div class="phd"><span class="phd-t">Tonne setzen</span></div>'
