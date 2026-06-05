@@ -836,6 +836,8 @@ SCKR.regatta.chart = {
       id: null,
       name: "Aktueller Kurs",
       buoys: [],          // { id, type, name, lat, lng, rounding, order }
+      loops: { inner: [], outer: [] },  // Arrays von Tonnen-IDs (Reihenfolge je Loop)
+      activeLoop: null,   // null | "inner" | "outer"
       startLine: { stb:null, pin:null },  // {lat,lng}
       windDir: null,      // Grad, manuell oder vom Wetter
       currentBuoyIdx: 0,
@@ -848,6 +850,10 @@ SCKR.regatta.chart = {
     startLine: null,
     routeLine: null,
     addMode: null,        // null | "buoy" | "startStb" | "startPin"
+    layMode: false,       // Tonnenleger-Modus aktiv
+    layTargetId: null,    // Ziel-Tonne beim Legen
+    _layArrived: false,   // Ankunft schon signalisiert
+    layTimer: null,       // Refresh-Loop
     photoOverlay: null,
     photoBounds: null
   },
@@ -903,6 +909,7 @@ SCKR.regatta.chart = {
       code: "",
       num: c.buoys.length + 1,
       windDir: null,
+      placed: false,
       lat: lat, lng: lng,
       rounding: "S",   // S=Steuerbord (Standard), R=Backbord
       order: c.buoys.length
@@ -933,6 +940,244 @@ SCKR.regatta.chart = {
     }
     var p = SCKR.core.gps.currentPos;
     await SCKR.regatta.chart.setStartEnd(end, p.lat, p.lng);
+  },
+
+  /* === ZIELPUNKT aus Start + Peilung + Distanz === */
+  destPoint: function(lat, lng, bearingDeg, distM) {
+    var R = 6371000;
+    var br = bearingDeg * Math.PI/180;
+    var lat1 = lat * Math.PI/180, lng1 = lng * Math.PI/180;
+    var lat2 = Math.asin(Math.sin(lat1)*Math.cos(distM/R) + Math.cos(lat1)*Math.sin(distM/R)*Math.cos(br));
+    var lng2 = lng1 + Math.atan2(Math.sin(br)*Math.sin(distM/R)*Math.cos(lat1), Math.cos(distM/R)-Math.sin(lat1)*Math.sin(lat2));
+    return { lat: lat2*180/Math.PI, lng: lng2*180/Math.PI };
+  },
+
+  /* === LJM BLOSSIN KURSBAHN B (Beispiel-Kurs) === */
+  loadLJMBlossin: async function() {
+    var c = SCKR.regatta.chart.state.course;
+    if(c.buoys.length > 0 && !confirm("Bestehenden Kurs durch LJM Blossin Kursbahn B ersetzen?")) return;
+
+    var ctr = { lat: 52.2605, lng: 13.8250 };  // Startlinien-Mitte, Kursbahn B (nördl. Wolziger See)
+    var wind = (c.windDir!=null && !isNaN(c.windDir)) ? c.windDir : 180;  // Prognose Sa 06.06: Wind aus Süd (~180°)
+    var dp = SCKR.regatta.chart.destPoint;
+    function place(xE, yN) {
+      var dist = Math.sqrt(xE*xE + yN*yN);
+      var relB = Math.atan2(xE, yN) * 180/Math.PI;
+      var actB = (relB + wind + 360) % 360;
+      return dp(ctr.lat, ctr.lng, actB, dist);
+    }
+    function mk(type, name, code, num, xE, yN) {
+      var p = place(xE, yN);
+      return { id: SCKR.core.util.uuid(), type:type, name:name, code:code, num:num,
+        windDir:null, placed:false, lat:p.lat, lng:p.lng, rounding:"S", order:0 };
+    }
+
+    // Marken aus Bahndiagramm LJM 2026 (Offsets in m: Ost, Nord)
+    var b1  = mk("luv",  "Luv",    "1",  1,   60, 550);
+    var b3  = mk("lee",  "Tonne 3","3",  3,   50, 230);
+    var b2  = mk("raum", "Wing",   "2",  2, -320, 480);
+    var b4  = mk("lee",  "Lee-Gate R","4", 4, -260, 90);
+    var b5  = mk("lee",  "Lee-Gate L","5", 5, -340, 90);
+    var fs  = mk("ziel", "Finish S","FS", 6, -150, 120);
+    var fp  = mk("ziel", "Finish P","FP", 7, -185, 75);
+    c.buoys = [b1, b2, b3, b4, b5, fs, fp];
+    for(var i=0;i<c.buoys.length;i++) c.buoys[i].order = i;
+
+    // Startlinie
+    var ss = place(45, 0), sp = place(-45, 0);
+    c.startLine = { stb: {lat:ss.lat, lng:ss.lng}, pin: {lat:sp.lat, lng:sp.lng} };
+
+    // Loops (Tonnen-IDs). Start/Finish sind implizit.
+    c.loops = {
+      inner: [b1.id, b3.id, b1.id, b2.id, b4.id],   // Wimpel 1: Start-1-3-1-2-4-Finish
+      outer: [b1.id, b2.id, b4.id]                   // Wimpel 3: Start-1-2-4-Finish
+    };
+    c.activeLoop = "outer";
+    c.windDir = wind;
+    c.name = "LJM Blossin – Kursbahn B";
+
+    await SCKR.regatta.chart.saveCourse();
+    SCKR.regatta.chart.renderMap();
+    if(SCKR.regatta.chart.render) SCKR.regatta.chart.render();
+    SCKR.core.ui.toast("LJM BLOSSIN KURS B GELADEN");
+  },
+
+  /* === TRAPEZ-VORLAGE generieren === */
+  createTrapezTemplate: async function() {
+    var c = SCKR.regatta.chart.state.course;
+    // Mittelpunkt: GPS, sonst Kartenmitte
+    var ctr;
+    if(SCKR.core.gps.currentPos) ctr = {lat:SCKR.core.gps.currentPos.lat, lng:SCKR.core.gps.currentPos.lng};
+    else if(c.buoys.length) ctr = {lat:c.buoys[0].lat, lng:c.buoys[0].lng};
+    else if(SCKR.regatta.chart.state.map) { var ce=SCKR.regatta.chart.state.map.getCenter(); ctr={lat:ce.lat,lng:ce.lng}; }
+    else { SCKR.core.ui.toast("KEIN BEZUGSPUNKT - GPS AKTIVIEREN"); return; }
+
+    if(c.buoys.length > 0 && !confirm("Bestehende Tonnen behalten? Abbrechen = ersetzen durch Trapez-Vorlage.")) {
+      c.buoys = []; c.loops = {inner:[], outer:[]};
+    } else if(c.buoys.length > 0) {
+      SCKR.core.ui.toast("VORLAGE NUR BEI LEEREM KURS"); return;
+    }
+
+    var wind = (c.windDir!=null) ? c.windDir : 0;  // Wind kommt aus dieser Richtung
+    var dp = SCKR.regatta.chart.destPoint;
+    var leg = 400;       // Luv-Lee Beinlänge (m)
+    var off = 60;        // Offset-Abstand (m)
+    var wing = 250;      // Raum/Wing seitlich (m)
+
+    var dn = function(d){return d;};
+    // Start unten (Lee-Bereich) = ctr. Luv liegt in Windrichtung (upwind).
+    var start = ctr;
+    var luv    = dp(start.lat, start.lng, wind, leg);
+    var offset = dp(luv.lat, luv.lng, (wind+225)%360, off);   // Offset links-unter Luv
+    var wingM  = dp(start.lat, start.lng, (wind+90)%360, wing); // Raum seitlich (Steuerbord)
+    wingM      = dp(wingM.lat, wingM.lng, wind, leg*0.5);       // auf halber Höhe
+    var lee    = dp(start.lat, start.lng, (wind+180)%360, 30);  // Lee knapp unter Start
+
+    function mk(type, name, code, num, pos) {
+      return { id: SCKR.core.util.uuid(), type:type, name:name, code:code, num:num,
+        windDir:null, placed:false, lat:pos.lat, lng:pos.lng, rounding:"S", order:c.buoys.length };
+    }
+    var bLuv  = mk("luv",    "Luv",    "1",  1, luv);    c.buoys.push(bLuv);
+    var bOff  = mk("offset", "Offset", "1a", 2, offset); c.buoys.push(bOff);
+    var bWing = mk("raum",   "Raum",   "2",  3, wingM);  c.buoys.push(bWing);
+    var bLee  = mk("lee",    "Lee",    "3",  4, lee);     c.buoys.push(bLee);
+
+    // Loops definieren (Tonnen-IDs)
+    // Outer: Luv -> Offset -> Raum -> Lee -> Luv -> Offset -> Lee
+    c.loops.outer = [bLuv.id, bOff.id, bWing.id, bLee.id, bLuv.id, bOff.id, bLee.id];
+    // Inner: Luv -> Offset -> Lee
+    c.loops.inner = [bLuv.id, bOff.id, bLee.id];
+    c.activeLoop = "outer";
+
+    await SCKR.regatta.chart.saveCourse();
+    SCKR.regatta.chart.renderMap();
+    if(SCKR.regatta.chart.render) SCKR.regatta.chart.render();
+    SCKR.core.ui.toast("TRAPEZ-VORLAGE ERSTELLT");
+  },
+
+  /* === TONNENLEGER-MODUS === */
+  LAY_TOLERANCE: 10,  // Meter
+
+  toggleLayMode: function() {
+    var s = SCKR.regatta.chart.state;
+    s.layMode = !s.layMode;
+    if(s.layMode) {
+      // erstes ungelegtes Ziel waehlen
+      var c = s.course;
+      var next = null;
+      for(var i=0;i<c.buoys.length;i++) if(!c.buoys[i].placed){ next=c.buoys[i].id; break; }
+      s.layTargetId = next || (c.buoys[0] && c.buoys[0].id) || null;
+      s._layArrived = false;
+      SCKR.regatta.chart.startLayLoop();
+      SCKR.core.ui.toast("TONNENLEGER-MODUS AN");
+    } else {
+      SCKR.regatta.chart.stopLayLoop();
+      SCKR.core.ui.toast("TONNENLEGER-MODUS AUS");
+    }
+    SCKR.regatta.chart.render();
+  },
+
+  setLayTarget: function(id) {
+    SCKR.regatta.chart.state.layTargetId = id;
+    SCKR.regatta.chart.state._layArrived = false;
+    SCKR.regatta.chart.render();
+  },
+
+  startLayLoop: function() {
+    var s = SCKR.regatta.chart.state;
+    if(s.layTimer) clearInterval(s.layTimer);
+    s.layTimer = setInterval(SCKR.regatta.chart.layNavUpdate, 1000);
+    SCKR.regatta.chart.layNavUpdate();
+  },
+
+  stopLayLoop: function() {
+    var s = SCKR.regatta.chart.state;
+    if(s.layTimer) { clearInterval(s.layTimer); s.layTimer = null; }
+  },
+
+  layNavUpdate: function() {
+    var s = SCKR.regatta.chart.state;
+    var el = document.getElementById("lay-nav");
+    if(!el) return;
+    if(!s.layMode || !s.layTargetId) { el.innerHTML = ""; return; }
+    var c = s.course;
+    var tgt = null;
+    for(var i=0;i<c.buoys.length;i++) if(c.buoys[i].id===s.layTargetId){ tgt=c.buoys[i]; break; }
+    if(!tgt) { el.innerHTML = '<div style="padding:14px;color:var(--mut);font-size:12px">Kein Ziel gewählt</div>'; return; }
+    var pos = SCKR.core.gps.currentPos;
+    if(!pos) { el.innerHTML = '<div style="padding:14px;color:var(--acc);font-size:13px;text-align:center">GPS aktivieren für Navigation</div>'; return; }
+
+    var dist = SCKR.core.util.haversine(pos, {lat:tgt.lat,lng:tgt.lng}) * 1000;
+    var brg = SCKR.core.util.bearing(pos, {lat:tgt.lat,lng:tgt.lng});
+    var hdg = SCKR.core.gps.currentHeading;
+    var steerTxt = "—", steerArrow = "&#8593;";
+    if(hdg != null && !isNaN(hdg)) {
+      var rel = brg - hdg; while(rel>180) rel-=360; while(rel<-180) rel+=360;
+      if(Math.abs(rel) < 6) { steerTxt = "GERADEAUS"; steerArrow = "&#8593;"; }
+      else if(rel > 0) { steerTxt = Math.round(rel)+"° STB"; steerArrow = "&#8594;"; }
+      else { steerTxt = Math.round(Math.abs(rel))+"° BB"; steerArrow = "&#8592;"; }
+    }
+
+    var tol = SCKR.regatta.chart.LAY_TOLERANCE;
+    var arrived = dist <= tol;
+    // Ankunft signalisieren (einmal)
+    if(arrived && !s._layArrived) {
+      s._layArrived = true;
+      try { SCKR.core.ui.beep(1200, 0.6); } catch(e){}
+      try { SCKR.core.ui.vibrate([200,100,200,100,300]); } catch(e){}
+    } else if(dist > tol*1.5 && s._layArrived) {
+      s._layArrived = false;  // Hysterese - kann erneut ausloesen
+    }
+
+    var distColor = arrived ? "#4ecf88" : (dist < 30 ? "#C8A84B" : "#fff");
+    el.innerHTML =
+      '<div style="text-align:center;padding:4px 0 8px">'
+      + '<div style="font-size:11px;color:var(--mut);font-family:var(--fd);letter-spacing:1px">ZIEL: '+(tgt.code||tgt.num||"")+' '+SCKR.core.fmt.esc(tgt.name)+'</div>'
+      + '<div style="font-size:40px;font-weight:800;font-family:var(--fd);color:'+distColor+';line-height:1.1">'+Math.round(dist)+'<span style="font-size:16px"> m</span></div>'
+      + (arrived
+          ? '<div style="background:rgba(78,207,136,.18);border:1px solid #4ecf88;border-radius:8px;padding:8px;margin:6px 0;color:#4ecf88;font-weight:800;font-family:var(--fd);font-size:14px">&#9679; ZIEL ERREICHT — ABLASSEN</div>'
+          : '<div style="font-size:22px;font-weight:800;font-family:var(--fd);color:var(--acc2);margin:2px 0">'+steerArrow+' '+steerTxt+'</div>')
+      + '<div style="font-size:11px;color:var(--mut);font-family:var(--fd)">Peilung '+Math.round(brg)+'° · Toleranz '+tol+' m</div>'
+      + '</div>'
+      + '<button type="button" onclick="SCKR.regatta.chart.dropBuoy()" class="btn '+(arrived?'btn-green':'btn-ghost')+'" style="width:100%;padding:13px;font-size:14px;font-weight:800">&#11015; TONNE HIER ABLASSEN</button>';
+  },
+
+  dropBuoy: async function() {
+    var s = SCKR.regatta.chart.state;
+    if(!s.layTargetId) { SCKR.core.ui.toast("KEIN ZIEL"); return; }
+    var pos = SCKR.core.gps.currentPos;
+    if(!pos) { SCKR.core.ui.toast("KEIN GPS"); return; }
+    var c = s.course;
+    var tgt = null, idx = -1;
+    for(var i=0;i<c.buoys.length;i++) if(c.buoys[i].id===s.layTargetId){ tgt=c.buoys[i]; idx=i; break; }
+    if(!tgt) return;
+    var dist = SCKR.core.util.haversine(pos, {lat:tgt.lat,lng:tgt.lng}) * 1000;
+    var msg = dist <= SCKR.regatta.chart.LAY_TOLERANCE
+      ? "Tonne \""+tgt.name+"\" hier ablassen?"
+      : "Du bist "+Math.round(dist)+" m vom Ziel entfernt.\n\nTrotzdem hier ablassen? (Ist-Position wird gesetzt)";
+    if(!confirm(msg)) return;
+    tgt.lat = pos.lat; tgt.lng = pos.lng; tgt.placed = true;
+    s._layArrived = false;
+    // naechstes ungelegtes Ziel
+    var next = null;
+    for(var j=0;j<c.buoys.length;j++) if(!c.buoys[j].placed){ next=c.buoys[j].id; break; }
+    s.layTargetId = next;
+    await SCKR.regatta.chart.saveCourse();
+    SCKR.regatta.chart.renderMap();
+    SCKR.regatta.chart.render();
+    try { SCKR.core.ui.beep(660, 0.3); } catch(e){}
+    try { SCKR.core.ui.vibrate(80); } catch(e){}
+    SCKR.core.ui.toast(next ? "GELEGT — NÄCHSTES ZIEL" : "ALLE TONNEN GELEGT");
+  },
+
+  /* === AKTIVEN LOOP UMSCHALTEN === */
+  setActiveLoop: async function(loop) {
+    var c = SCKR.regatta.chart.state.course;
+    c.activeLoop = (c.activeLoop === loop) ? null : loop;
+    await SCKR.regatta.chart.saveCourse();
+    SCKR.regatta.chart.renderMap();
+    if(SCKR.regatta.chart.render) SCKR.regatta.chart.render();
+    SCKR.core.ui.toast(c.activeLoop ? (loop.toUpperCase()+" LOOP AKTIV") : "KEIN LOOP AKTIV");
   },
 
   addBuoyFromGPS: async function() {
@@ -1116,6 +1361,8 @@ SCKR.regatta.chart = {
     }
     s.buoyMarkers = {};
     if(s.routeLine) { try { s.map.removeLayer(s.routeLine); } catch(e) {} s.routeLine = null; }
+    if(s.routeLineOuter) { try { s.map.removeLayer(s.routeLineOuter); } catch(e) {} s.routeLineOuter = null; }
+    if(s.routeLineInner) { try { s.map.removeLayer(s.routeLineInner); } catch(e) {} s.routeLineInner = null; }
     if(s.startLine) { try { s.map.removeLayer(s.startLine); } catch(e) {} s.startLine = null; }
     if(s.startStbMarker) { try { s.map.removeLayer(s.startStbMarker); } catch(e) {} s.startStbMarker = null; }
     if(s.startPinMarker) { try { s.map.removeLayer(s.startPinMarker); } catch(e) {} s.startPinMarker = null; }
@@ -1165,8 +1412,33 @@ SCKR.regatta.chart = {
       s.buoyMarkers[b.id+"_lbl"] = labelMarker;
     }
 
-    // Route line through buoys
-    if(c.buoys.length >= 2) {
+    // Route lines: Loops falls definiert, sonst lineare Tonnenfolge
+    var buoyById = {};
+    for(var bx=0;bx<c.buoys.length;bx++) buoyById[c.buoys[bx].id] = c.buoys[bx];
+    function loopCoords(ids) {
+      var out = [];
+      for(var li=0;li<ids.length;li++){ var bb=buoyById[ids[li]]; if(bb) out.push([bb.lat,bb.lng]); }
+      return out;
+    }
+    var hasLoops = c.loops && ((c.loops.outer&&c.loops.outer.length>1) || (c.loops.inner&&c.loops.inner.length>1));
+    if(hasLoops) {
+      // Outer Loop (gold)
+      if(c.loops.outer && c.loops.outer.length>1) {
+        var oc = loopCoords(c.loops.outer);
+        s.routeLineOuter = L.polyline(oc, {
+          color:"#C8A84B", weight: c.activeLoop==="outer"?4:2,
+          opacity: c.activeLoop==="outer"?0.95:0.45, dashArray: c.activeLoop==="outer"?null:"6,8"
+        }).addTo(s.map);
+      }
+      // Inner Loop (türkis)
+      if(c.loops.inner && c.loops.inner.length>1) {
+        var ic = loopCoords(c.loops.inner);
+        s.routeLineInner = L.polyline(ic, {
+          color:"#1AABA0", weight: c.activeLoop==="inner"?4:2,
+          opacity: c.activeLoop==="inner"?0.95:0.45, dashArray: c.activeLoop==="inner"?null:"4,6"
+        }).addTo(s.map);
+      }
+    } else if(c.buoys.length >= 2) {
       var coords = c.buoys.map(function(b){ return [b.lat, b.lng]; });
       s.routeLine = L.polyline(coords, {
         color: "#C8A84B", weight: 2, opacity: 0.6, dashArray: "6,8"
@@ -1363,6 +1635,33 @@ SCKR.regatta.chart = {
       + '</div>'
       + '<div class="pnl"><div id="chart-nav-info"></div></div>'
       + '<div class="pnl"><div id="chart-map" style="height:340px;width:100%;border-radius:8px"></div></div>'
+      + '<div class="pnl" style="'+(SCKR.regatta.chart.state.layMode?'border:2px solid #1AABA0':'')+'"><div class="phd"><span class="phd-t">Tonnenleger-Modus</span></div>'
+      +   '<div style="padding:10px">'
+      +     '<button type="button" onclick="SCKR.regatta.chart.toggleLayMode()" class="btn '+(SCKR.regatta.chart.state.layMode?'btn-green':'btn-ghost')+'" style="width:100%;padding:12px;font-size:13px;font-weight:800">'+(SCKR.regatta.chart.state.layMode?'&#9632; MODUS BEENDEN':'&#9654; TONNEN LEGEN STARTEN')+'</button>'
+      +     (SCKR.regatta.chart.state.layMode ? '<div id="lay-nav" style="margin-top:10px"></div>' : '')
+      +     (SCKR.regatta.chart.state.layMode && c.buoys.length ? '<div style="margin-top:10px;border-top:1px solid var(--bdr);padding-top:8px"><div style="font-size:10px;color:var(--mut);font-family:var(--fd);margin-bottom:6px;letter-spacing:1px">TONNEN-CHECKLISTE</div>'
+            + c.buoys.map(function(b){
+                var isTgt = b.id===SCKR.regatta.chart.state.layTargetId;
+                return '<div onclick="SCKR.regatta.chart.setLayTarget(\''+b.id+'\')" style="display:flex;align-items:center;gap:8px;padding:7px 8px;margin-bottom:4px;border-radius:6px;cursor:pointer;background:'+(isTgt?'rgba(26,171,160,.18)':'transparent')+';border:1px solid '+(isTgt?'#1AABA0':'var(--bdr)')+'">'
+                  + '<span style="font-size:15px">'+(b.placed?'&#9989;':'&#9711;')+'</span>'
+                  + '<span style="flex:1;font-family:var(--fd);font-weight:700;font-size:13px;color:'+(b.placed?'#4ecf88':'#fff')+'">'+(b.code||b.num||'')+' '+SCKR.core.fmt.esc(b.name)+'</span>'
+                  + '<span style="font-size:10px;color:var(--mut);font-family:var(--fd)">'+(b.placed?'GELEGT':(isTgt?'ZIEL':'offen'))+'</span>'
+                  + '</div>';
+              }).join('')
+            + '</div>' : '')
+      +   '</div>'
+      + '</div>'
+      + '<div class="pnl"><div class="phd"><span class="phd-t">Trapez-Bahn &amp; Loops</span></div>'
+      +   '<div style="padding:10px">'
+      +     '<button class="btn btn-gold" type="button" onclick="SCKR.regatta.chart.loadLJMBlossin()" style="width:100%;font-size:12px;padding:11px;margin-bottom:8px">&#9875; LJM BLOSSIN – KURS B LADEN</button>'
+      +     '<button class="btn btn-ghost" type="button" onclick="SCKR.regatta.chart.createTrapezTemplate()" style="width:100%;font-size:12px;padding:11px;margin-bottom:8px">&#9650; TRAPEZ-VORLAGE ERSTELLEN</button>'
+      +     '<div style="display:flex;gap:8px">'
+      +       '<button type="button" onclick="SCKR.regatta.chart.setActiveLoop(\'outer\')" style="flex:1;padding:10px;border-radius:8px;font-family:var(--fd);font-weight:800;font-size:12px;cursor:pointer;border:2px solid #C8A84B;background:'+(c.activeLoop==="outer"?"#C8A84B":"transparent")+';color:'+(c.activeLoop==="outer"?"#03101e":"#C8A84B")+'">OUTER LOOP</button>'
+      +       '<button type="button" onclick="SCKR.regatta.chart.setActiveLoop(\'inner\')" style="flex:1;padding:10px;border-radius:8px;font-family:var(--fd);font-weight:800;font-size:12px;cursor:pointer;border:2px solid #1AABA0;background:'+(c.activeLoop==="inner"?"#1AABA0":"transparent")+';color:'+(c.activeLoop==="inner"?"#03101e":"#1AABA0")+'">INNER LOOP</button>'
+      +     '</div>'
+      +     '<div style="font-size:10px;color:var(--mut);margin-top:6px;text-align:center">Outer = gold, Inner = t&uuml;rkis. Tippen = aktiv schalten.</div>'
+      +   '</div>'
+      + '</div>'
       + '<div class="pnl"><div class="phd"><span class="phd-t">Tonne setzen</span></div>'
       +   '<div style="padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">'
       +     '<button class="btn btn-gold" type="button" onclick="SCKR.regatta.chart.addBuoyFromGPS()" style="font-size:12px;padding:11px">HIER (GPS)</button>'
@@ -1467,6 +1766,7 @@ SCKR.regatta.chart = {
     }
 
     SCKR.regatta.chart.renderMap();
+    if(s.layMode) setTimeout(SCKR.regatta.chart.layNavUpdate, 50);
 
     if(s.course.buoys.length >= 2) {
       var coords = s.course.buoys.map(function(b){return [b.lat,b.lng];});
