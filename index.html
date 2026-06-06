@@ -1203,6 +1203,48 @@ SCKR.regatta.chart = {
     SCKR.core.ui.toast(next ? "GELEGT — NÄCHSTES ZIEL" : "ALLE TONNEN GELEGT");
   },
 
+  /* === LIVE-STANDORT MARKER === */
+  updateLiveMarker: function() {
+    var s = SCKR.regatta.chart.state;
+    if(!s.map) return;
+    if(s.liveMarker) { try { s.map.removeLayer(s.liveMarker); } catch(e){} s.liveMarker = null; }
+    var pos = SCKR.core.gps.currentPos;
+    if(!pos) return;
+    var spd = SCKR.core.gps.currentSpeed || 0;
+    var hdg = SCKR.core.gps.currentHeading;
+    var moving = spd > 0.5;  // m/s
+    var html;
+    if(moving && hdg != null && !isNaN(hdg)) {
+      html = '<div style="transform:rotate('+hdg+'deg)">'
+        + '<svg width="30" height="30" viewBox="0 0 30 30">'
+        + '<circle cx="15" cy="15" r="10" fill="rgba(45,140,255,.25)" stroke="#2D8CFF" stroke-width="1.5"/>'
+        + '<path d="M15 4 L21 18 L15 14 L9 18 Z" fill="#2D8CFF" stroke="#fff" stroke-width="0.8"/>'
+        + '</svg></div>';
+    } else {
+      html = '<div><svg width="24" height="24" viewBox="0 0 24 24">'
+        + '<circle cx="12" cy="12" r="8" fill="rgba(45,140,255,.25)" stroke="#2D8CFF" stroke-width="1.5"/>'
+        + '<circle cx="12" cy="12" r="4" fill="#2D8CFF" stroke="#fff" stroke-width="1.5"/>'
+        + '</svg></div>';
+    }
+    var icon = L.divIcon({className:'', html:html, iconSize:[30,30], iconAnchor:[15,15]});
+    s.liveMarker = L.marker([pos.lat,pos.lng], {icon:icon, interactive:false, zIndexOffset:1000}).addTo(s.map);
+  },
+
+  centerOnMe: function() {
+    var s = SCKR.regatta.chart.state;
+    var pos = SCKR.core.gps.currentPos;
+    if(pos) {
+      if(s.map) s.map.setView([pos.lat, pos.lng], Math.max(s.map.getZoom(), 15));
+      SCKR.regatta.chart.updateLiveMarker();
+    } else {
+      SCKR.core.ui.toast("GPS WIRD AKTIVIERT...");
+      SCKR.core.gps.request(function(){
+        var p = SCKR.core.gps.currentPos;
+        if(p && s.map) { s.map.setView([p.lat,p.lng], 16); SCKR.regatta.chart.updateLiveMarker(); }
+      });
+    }
+  },
+
   /* === KARTEN-LAYER UMSCHALTEN === */
   toggleLayer: function(which) {
     var s = SCKR.regatta.chart.state;
@@ -1899,15 +1941,20 @@ SCKR.regatta.chart = {
       s.map = null;
     }
 
-    var center = SCKR.core.gps.currentPos
-      ? [SCKR.core.gps.currentPos.lat, SCKR.core.gps.currentPos.lng]
-      : [52.3218, 13.6538];
     var zoom = 16;
-
-    if(s.course.buoys.length > 0) {
+    var center;
+    if(SCKR.core.gps.currentPos) {
+      // Beim Öffnen auf aktuelle Position zentrieren
+      center = [SCKR.core.gps.currentPos.lat, SCKR.core.gps.currentPos.lng];
+      s._needGpsCenter = false;
+    } else if(s.course.buoys.length > 0) {
       var lats = s.course.buoys.map(function(b){return b.lat;});
       var lngs = s.course.buoys.map(function(b){return b.lng;});
       center = [(Math.min.apply(null,lats)+Math.max.apply(null,lats))/2, (Math.min.apply(null,lngs)+Math.max.apply(null,lngs))/2];
+      s._needGpsCenter = true;  // sobald GPS-Fix kommt, einmal dorthin zentrieren
+    } else {
+      center = [52.3218, 13.6538];
+      s._needGpsCenter = true;
     }
 
     s.map = L.map(container, {zoomControl:true, attributionControl:false, tap:true}).setView(center, zoom);
@@ -1938,7 +1985,24 @@ SCKR.regatta.chart = {
       }).bindPopup("Mein Standort").addTo(s.map);
     }
 
+    // Locate-Button auf der Karte
+    try {
+      var LocCtrl = L.Control.extend({
+        options:{position:'topright'},
+        onAdd:function(){
+          var b=L.DomUtil.create('button');
+          b.innerHTML='&#9678;';
+          b.title='Auf meine Position';
+          b.style.cssText='width:36px;height:36px;font-size:20px;line-height:1;background:#03101e;color:#2D8CFF;border:2px solid #2D8CFF;border-radius:8px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.4)';
+          L.DomEvent.on(b,'click',function(e){ L.DomEvent.stop(e); SCKR.regatta.chart.centerOnMe(); });
+          return b;
+        }
+      });
+      s.map.addControl(new LocCtrl());
+    } catch(e) {}
+
     SCKR.regatta.chart.renderMap();
+    SCKR.regatta.chart.updateLiveMarker();
     if(s.layMode) setTimeout(SCKR.regatta.chart.layNavUpdate, 50);
 
     if(s.course.buoys.length >= 2) {
@@ -1954,7 +2018,19 @@ SCKR.regatta.chart = {
 /* GPS update -> info refresh */
 SCKR.core.events.on("gps:update", function() {
   if(SCKR.core.currentTab === "chart") {
+    var s = SCKR.regatta.chart.state;
     SCKR.regatta.chart.updateInfo();
+    SCKR.regatta.chart.updateLiveMarker();
+    var pos = SCKR.core.gps.currentPos;
+    // Einmalige Zentrierung sobald erster GPS-Fix nach Öffnen kommt
+    if(s._needGpsCenter && pos && s.map) {
+      s.map.setView([pos.lat, pos.lng], 16);
+      s._needGpsCenter = false;
+    }
+    // Auto-Folgen nur im Tonnenleger-Modus
+    if(s.layMode && pos && s.map) {
+      s.map.panTo([pos.lat, pos.lng]);
+    }
   }
 });
 
