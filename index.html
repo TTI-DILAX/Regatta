@@ -1787,6 +1787,59 @@ SCKR.regatta.chart = {
   },
 
   /* === MAP RENDERING === */
+  _seqOutHtml: function() {
+    var c = SCKR.regatta.chart.state.course;
+    if(!c.sequence || !c.sequence.length) return '';
+    var parts = c.sequence.map(function(e){ return '<span style="display:inline-block;background:rgba(200,168,75,.15);border:1px solid var(--bdr2);border-radius:6px;padding:2px 7px;margin:2px;font-family:var(--fd);font-weight:700;font-size:12px;color:var(--acc2)">'+e.label+'</span>'; });
+    return '<div style="margin-bottom:8px;line-height:1.9">Bahn:&nbsp;' + parts.join('<span style="color:var(--mut)">\u2192</span>') + '</div>';
+  },
+
+  applyCourseSeq: function() {
+    var el = document.getElementById("course-seq");
+    var raw = el ? el.value.trim() : "";
+    var c = SCKR.regatta.chart.state.course;
+    if(!raw) { c.sequence = []; c.sequenceRaw = ""; SCKR.regatta.chart.renderMap(); return; }
+    var byRef = {};
+    c.buoys.forEach(function(b){
+      if(b.code) byRef[String(b.code).toLowerCase()] = b;
+      if(b.num!=null) byRef[String(b.num).toLowerCase()] = b;
+    });
+    var SIDES = [["stb","S"],["bb","R"],["stbd","S"],["bbd","R"],["p","R"],["s","S"],["b","R"],["r","R"]];
+    var resolve = function(low){
+      if(byRef[low]) return {b:byRef[low], side:null};        // ganzer Token = Tonnen-Code (z.B. 1a)
+      for(var i=0;i<SIDES.length;i++){
+        var suf=SIDES[i][0];
+        if(low.length>suf.length && low.slice(-suf.length)===suf){
+          var ref=low.slice(0, low.length-suf.length);
+          if(byRef[ref]) return {b:byRef[ref], side:SIDES[i][1]};
+        }
+      }
+      return null;
+    };
+    var tokens = raw.split(/[,;/]+/).map(function(t){return t.trim();}).filter(Boolean);
+    var seq = [], ids = [], unknown = [];
+    tokens.forEach(function(tok){
+      var low = tok.toLowerCase().replace(/\s+/g,"");
+      if(low==="z" || low==="ziel" || low==="finish") { seq.push({label:"\uD83C\uDFC1 Ziel", finish:true}); return; }
+      if(low==="s" || low==="start") { seq.push({label:"Start", start:true}); return; }
+      var r = resolve(low);
+      if(!r) { unknown.push(tok); return; }
+      if(r.side) r.b.rounding = r.side;
+      ids.push(r.b.id);
+      seq.push({id:r.b.id, side:r.b.rounding, label:(r.b.code||r.b.num||"?")+" "+(r.b.rounding==="R"?"Bb":"Stb")});
+    });
+    c.sequenceRaw = raw;
+    c.sequence = seq;
+    c.loops.outer = ids;
+    c.activeLoop = "outer";
+    c.currentBuoyIdx = 0;
+    SCKR.regatta.chart.saveCourse();
+    SCKR.regatta.chart.renderMap();
+    if(unknown.length) SCKR.core.ui.toast("Nicht gefunden: " + unknown.join(", ") + " \u2014 erst Tonne anlegen");
+    else SCKR.core.ui.toast("BAHN GESETZT: " + ids.length + " Marken");
+    SCKR.core.ui.vibrate(40);
+  },
+
   _drawLaylines: function() {
     var s = SCKR.regatta.chart.state, c = s.course;
     if(s._laylines) { s._laylines.forEach(function(l){ try{ s.map.removeLayer(l); }catch(e){} }); }
@@ -2152,6 +2205,11 @@ SCKR.regatta.chart = {
       + '<button class="btn" type="button" style="flex:1;background:var(--nav)" onclick="SCKR.regatta.chart.toggleFullscreen()">\u26F6 VOLLBILD</button>'
       + '<button class="btn" type="button" style="flex:1;background:var(--nav)" onclick="SCKR.regatta.chart.toggleLaylines()">LAYLINES</button>'
       + '</div>'
+      + '<div style="display:flex;gap:6px;margin-bottom:6px">'
+      +   '<input class="inp" id="course-seq" placeholder="Bahnansage: 1stb, 2bb, 4stb, 3bb, 1, Z" value="'+SCKR.core.fmt.esc((SCKR.regatta.chart.state.course.sequenceRaw)||"")+'" style="flex:1;padding:9px;font-size:13px">'
+      +   '<button class="btn btn-gold" type="button" onclick="SCKR.regatta.chart.applyCourseSeq()">SETZEN</button>'
+      + '</div>'
+      + SCKR.regatta.chart._seqOutHtml()
       + '<div id="chart-map" style="height:340px;width:100%;border-radius:8px"></div></div>'
       + '<div class="pnl"><div class="phd" onclick="SCKR.regatta.chart.togglePanel(\'karten\')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center"><span class="phd-t">Karten-Anzeige</span><span style="color:var(--mut);font-size:13px">'+(SCKR.regatta.chart.state.collapsed.karten?'\u25b8':'\u25be')+'</span></div>'
       + (SCKR.regatta.chart.state.collapsed.karten ? '' :
